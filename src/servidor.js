@@ -150,27 +150,21 @@ socketWhatsApp.ev.on("messages.upsert", async (evento) => {
 
       for (const mensagem of evento.messages || []) {
         if (deveIgnorar(mensagem)) continue;
-          console.log(mensagem.message.audioMessage)
-console.log(mensagem.message.audioMessage)
-    const buffer = await baixarAudioComoBuffer(mensagem.message.audioMessage);
-console.log(buffer)
-    const form = new FormData();
-    form.append("data", buffer, {
-      filename: "audio.ogg",
-      contentType: "audio/ogg",
-    });
 
-    // opcional: metadados em JSON junto
-    form.append("meta", JSON.stringify({ mimetype: "audio/ogg" }));
+    const raw = await baixarAudioComoBuffer(mensagem.message.audioMessage);
+    const buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
 
-    const r = await fetch("https://n8n.planoartistico.com/webhook-test/2411140f-2dad-44c2-a5f5-70b5b8612e54", {
-      method: "POST",
-      headers: form.getHeaders(), 
-      body: form,
-    });
+          const form = new FormData(); // ✅ global (WHATWG)
+//form.append("data", new Blob([buffer], { type: "audio/ogg", filename : 'audio.ogg' }), "audio.ogg");
+form.append("data", new Blob([buffer], { type: "audio/ogg", filename : 'audio.ogg' }));
 
-    const txt = await r.text();
-    registro.info({ txt }, "Mensagem recebida.");
+// ✅ NÃO setar headers manualmente (o fetch põe boundary certo)
+const r = await fetch("https://n8n.planoartistico.com/webhook-test/2411140f-2dad-44c2-a5f5-70b5b8612e54", { method: "POST", body: form });
+
+const txt = await r.text();
+console.log("STATUS:", r.status);
+console.log("TXT:", txt);
+
       }
           /*
         const jidRemoto = mensagem?.key?.remoteJid;
