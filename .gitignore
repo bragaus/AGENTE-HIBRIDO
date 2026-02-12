@@ -1,0 +1,9 @@
+src/estado-auth-mv/
+src/estado-auth/
+package-lock.json
+package.json
+estado_auth_backup
+node_modules 
+.env
+auth_backup
+
