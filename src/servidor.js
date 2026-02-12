@@ -2,7 +2,6 @@ import "dotenv/config";
 import express from "express";
 import pino from "pino";
 import qrcode from "qrcode-terminal";
-import FormData from "form-data";
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
@@ -32,9 +31,6 @@ async function bufferFromStream(readable) {
 }
 
 async function baixarAudioComoBuffer(audioMessage) {
-  const stream = await downloadContentFromMessage(audioMessage, "audio");
-  const buffer = await bufferFromStream(stream);
-  return buffer;
 }
 
 /**
@@ -151,19 +147,25 @@ socketWhatsApp.ev.on("messages.upsert", async (evento) => {
       for (const mensagem of evento.messages || []) {
         if (deveIgnorar(mensagem)) continue;
 
-    const raw = await baixarAudioComoBuffer(mensagem.message.audioMessage);
-    const buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+  const stream = await downloadContentFromMessage(mensagem.message.audioMessage, "audio");
+  const buffer = await bufferFromStream(stream);
+  const bufferTeste = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 
-          const form = new FormData(); // ✅ global (WHATWG)
-//form.append("data", new Blob([buffer], { type: "audio/ogg", filename : 'audio.ogg' }), "audio.ogg");
-form.append("data", new Blob([buffer], { type: "audio/ogg", filename : 'audio.ogg' }));
+console.log(bufferTeste)
 
-// ✅ NÃO setar headers manualmente (o fetch põe boundary certo)
-const r = await fetch("https://n8n.planoartistico.com/webhook-test/2411140f-2dad-44c2-a5f5-70b5b8612e54", { method: "POST", body: form });
+const form = new FormData(); // ✅ global WHATWG do Node 24
+form.append("data", new Blob([buffer], { type: "audio/ogg" }), "audio.ogg");
+
+const r = await fetch("https://n8n.planoartistico.com/webhook-test/2411140f-2dad-44c2-a5f5-70b5b8612e54", {
+  method: "POST",
+  body: form, // ✅ sem headers manuais
+});
 
 const txt = await r.text();
 console.log("STATUS:", r.status);
 console.log("TXT:", txt);
+console.log("FormData global?", typeof globalThis.FormData, "Blob global?", typeof globalThis.Blob);
+
 
       }
           /*
