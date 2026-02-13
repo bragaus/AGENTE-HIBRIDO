@@ -1,3 +1,10 @@
+import dotenv from "dotenv";
+dotenv.config({ path: "/root/baileys/.env" });
+
+import { spawn } from "node:child_process";
+import OpenAI, { toFile } from "openai";
+import { z } from "zod";
+import { zodTextFormat } from "openai/helpers/zod";
 import "dotenv/config";
 import express from "express";
 import pino from "pino";
@@ -7,7 +14,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
- downloadContentFromMessage
+  downloadContentFromMessage
 } from "@whiskeysockets/baileys";
 
 import { aplicarCabecalhosSeguranca, criarLimitadorRequisicoes, autenticarPorToken, exigirTexto } from "./util/seguranca.js";
@@ -27,10 +34,295 @@ let socketWhatsApp = null;
 async function bufferFromStream(readable) {
   const chunks = [];
   for await (const chunk of readable) chunks.push(chunk);
+    
+
+console.log("stream:", chunk);
+console.log("typeof stream:", typeof chunk);
+console.log("stream?.[Symbol.asyncIterator]:", chunk?.[Symbol.asyncIterator]);
+
+
   return Buffer.concat(chunks);
+
+
+
 }
 
+
 async function baixarAudioComoBuffer(audioMessage) {
+}
+
+/**
+ * Converte qualquer áudio (ex.: OGG/Opus WhatsApp) para WAV mono 16k + normalizado.
+ * Entrada e saída via memória (Buffer), sem arquivos temporários.
+ *
+ */
+
+
+async function whatsappAudioParaWavMono16kNormalizado(audioBuffer) {
+
+
+console.log("audioBuffer")
+console.log(audioBuffer)
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-hide_banner",
+      "-loglevel", "error",
+      "-y",
+      "-i", "pipe:0",
+      "-ac", "1",
+      "-ar", "16000",
+      "-c:a", "pcm_s16le",
+      "-af", "loudnorm=I=-16:LRA=11:TP=-1.5",
+      "-f", "wav",
+      "pipe:1",
+    ];
+
+    const ff = spawn("ffmpeg", args);
+
+    const chunks = [];
+    const errChunks = [];
+
+    ff.stdout.on("data", (d) => chunks.push(d));
+    ff.stderr.on("data", (d) => errChunks.push(d));
+
+    ff.on("error", (e) => reject(e));
+
+    ff.on("close", (code) => {
+      if (code !== 0) {
+        const msg = Buffer.concat(errChunks).toString("utf8") || `ffmpeg saiu com code ${code}`;
+        return reject(new Error(msg));
+      }
+      resolve(Buffer.concat(chunks));
+    });
+
+    ff.stdin.end(audioBuffer);
+  });
+}
+
+/**
+ * Transcreve + avalia pronúncia, com pré-processamento ffmpeg (WAV mono 16k normalizado).
+ */
+async function transcreverEAvaliarPronunciaComFFmpeg({
+  audioBuffer,
+  filenameOriginal = "whatsapp.ogg",
+  mimetypeOriginal = "audio/ogg",
+  language = "en",
+  targetText,
+}) {
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  // 0) PREP: padroniza áudio (melhora fidelidade e estabilidade)
+  const wavBuffer = await whatsappAudioParaWavMono16kNormalizado(audioBuffer);
+
+  // 1) TRANSCRIÇÃO (alta fidelidade)
+  const transcription = await openai.audio.transcriptions.create({
+    file: await toFile(wavBuffer, "audio.wav", { type: "audio/wav" }),
+    model: "gpt-4o-transcribe",
+    language,
+    response_format: "json",
+    include: ["logprobs"],
+  });
+
+  const text = (transcription?.text || "").trim();
+  const tokenLogprobs = Array.isArray(transcription?.logprobs) ? transcription.logprobs : [];
+
+  const avgLogprob =
+    tokenLogprobs.length > 0
+      ? tokenLogprobs.reduce((acc, t) => acc + (t.logprob ?? 0), 0) / tokenLogprobs.length
+      : null;
+
+  const asrConfidence =
+    avgLogprob == null
+      ? null
+      : 1 / (1 + Math.exp(-((avgLogprob + 1.2) * 2.2)));
+
+  // 2) AVALIAÇÃO DE PRONÚNCIA (JSON estável)
+  const PronunciaSchema = z.object({
+    score: z.number().min(0).max(100),
+    level: z.enum(["ruim", "ok", "boa", "excelente"]),
+    summary_pt: z.string(),
+    strengths: z.array(z.string()),
+    improvements: z.array(z.string()),
+    tips: z.array(z.string()),
+    detected_issues: z.array(
+      z.enum([
+        "hesitation",
+        "mumbling",
+        "stress_intonation",
+        "vowel_clarity",
+        "consonant_clarity",
+        "pace_too_fast",
+        "pace_too_slow",
+        "unclear_words",
+      ])
+    ),
+  });
+
+  const analysisPrompt = [
+    "Você é uma professora de inglês especialista em pronúncia.",
+    "Responda SOMENTE em JSON conforme o schema.",
+    "Avalie a pronúncia usando transcript + sinais do ASR (asr_confidence/avg_logprob).",
+    "Se houver targetText, compare o que era esperado vs. falado e penalize omissões/trocas.",
+    "Dê dicas práticas curtas de treino (10–20s).",
+  ].join("\n");
+
+  const analysisInput = {
+    transcript: text,
+    targetText: targetText ?? null,
+    asr_confidence: asrConfidence,
+    avg_logprob: avgLogprob,
+    token_count: tokenLogprobs.length,
+    worst_tokens: tokenLogprobs
+      .slice()
+      .sort((a, b) => (a.logprob ?? 0) - (b.logprob ?? 0))
+      .slice(0, 12)
+      .map((t) => ({ token: t.token, logprob: t.logprob })),
+    source_audio: { filenameOriginal, mimetypeOriginal },
+  };
+
+  const response = await openai.responses.parse({
+    model: "gpt-4o-mini",
+    input: [
+      { role: "system", content: analysisPrompt },
+      { role: "user", content: JSON.stringify(analysisInput) },
+    ],
+    text: { format: zodTextFormat(PronunciaSchema, "pronuncia") },
+  });
+
+  return {
+    text,
+    pronunciation: response.output_parsed,
+    asr: {
+      model: "gpt-4o-transcribe",
+      language,
+      avg_logprob: avgLogprob,
+      confidence: asrConfidence,
+      preprocessed: { format: "wav", sample_rate: 16000, channels: 1, normalized: "loudnorm I=-16" },
+    },
+  };
+}
+
+/**
+ * Transcreve áudio (WhatsApp) e avalia pronúncia.
+ *
+ * @param {Object} params
+ * @param {Buffer} params.audioBuffer  - Buffer do áudio (ex.: ogg/opus do WhatsApp já decodificado/baixado)
+ * @param {string} params.filename     - Nome do arquivo (ex.: "audio.ogg")
+ * @param {string} params.mimetype     - MIME (ex.: "audio/ogg")
+ * @param {string} [params.language]   - ISO-639-1 (ex.: "en"). Se você souber que é inglês, passe "en". :contentReference[oaicite:3]{index=3}
+ * @param {string} [params.targetText] - (Opcional mas MUITO forte) frase-alvo esperada do aluno
+ * @returns {Promise<Object>}          - { text, pronunciation, asr }
+ */
+async function transcreverEAvaliarPronuncia({
+  audioBuffer,
+  filename,
+  mimetype,
+  language = "en",
+  targetText,
+}) {
+
+console.log("AudioBuffer2")
+console.log(audioBuffer)
+console.log(filename)
+    
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  // 1) TRANSCRIÇÃO (alta fidelidade) + logprobs pra sinais de confiança
+  const transcription = await openai.audio.transcriptions.create({
+    file: await toFile(audioBuffer, filename, { type: mimetype }),
+    model: "gpt-4o-transcribe",
+    language,                 // "en" melhora precisão/latência se for mesmo inglês :contentReference[oaicite:4]{index=4}
+    response_format: "json",  // requerido p/ logprobs nesse modelo :contentReference[oaicite:5]{index=5}
+    include: ["logprobs"],    // devolve logprobs por token :contentReference[oaicite:6]{index=6}
+  });
+
+  const text = (transcription?.text || "").trim();
+  const tokenLogprobs = Array.isArray(transcription?.logprobs) ? transcription.logprobs : [];
+
+  // Heurística simples de “clareza/confiança” (0..1) baseada em logprobs.
+  // (Não é “pronúncia perfeita”, mas correlaciona com inteligibilidade.)
+  const avgLogprob =
+    tokenLogprobs.length > 0
+      ? tokenLogprobs.reduce((acc, t) => acc + (t.logprob ?? 0), 0) / tokenLogprobs.length
+      : null;
+
+  // Mapeia avgLogprob (tipicamente negativo) pra 0..1 com uma sigmoid suave
+  const asrConfidence =
+    avgLogprob == null
+      ? null
+      : 1 / (1 + Math.exp(-((avgLogprob + 1.2) * 2.2))); // ajuste empírico
+
+  // 2) AVALIAÇÃO DE PRONÚNCIA (Structured Output)
+  const PronunciaSchema = z.object({
+    score: z.number().min(0).max(100),
+    level: z.enum(["ruim", "ok", "boa", "excelente"]),
+    summary_pt: z.string(),          // resumo em português
+    strengths: z.array(z.string()),  // pontos fortes
+    improvements: z.array(z.string()),// pontos a melhorar
+    tips: z.array(z.string()),       // dicas práticas
+    detected_issues: z.array(
+      z.enum([
+        "hesitation",
+        "mumbling",
+        "stress_intonation",
+        "vowel_clarity",
+        "consonant_clarity",
+        "pace_too_fast",
+        "pace_too_slow",
+        "unclear_words",
+      ])
+    ),
+  });
+
+  const analysisPrompt = [
+    "Você é uma professora de inglês especialista em pronúncia.",
+    "Responda SOMENTE em JSON (conforme o schema).",
+    "Avalie a pronúncia do aluno usando:",
+    "- o texto transcrito (o que ele realmente falou)",
+    "- sinais de confiança do ASR (asr_confidence / avg_logprob)",
+    "- e, se houver, a frase-alvo esperada (targetText) para medir desvio.",
+    "",
+    "Se targetText existir, compare o sentido e a forma: palavras faltando, trocadas, contrações, finais de palavras, etc.",
+    "Se targetText NÃO existir, foque em inteligibilidade, clareza, fluência e naturalidade para um falante não-nativo.",
+    "",
+    "Retorne dicas práticas e curtas (treinos de 10–20s).",
+  ].join("\n");
+
+  const analysisInput = {
+    transcript: text,
+    targetText: targetText ?? null,
+    asr_confidence: asrConfidence,
+    avg_logprob: avgLogprob,
+    token_count: tokenLogprobs.length,
+    // Pequena amostra de tokens “piorzinhos” ajuda a achar trechos problemáticos
+    worst_tokens: tokenLogprobs
+      .slice()
+      .sort((a, b) => (a.logprob ?? 0) - (b.logprob ?? 0))
+      .slice(0, 12)
+      .map((t) => ({ token: t.token, logprob: t.logprob })),
+  };
+
+  const response = await openai.responses.parse({
+    model: "gpt-4o-mini", // bom custo/benefício pra avaliação textual; pode subir pra um maior se quiser
+    input: [
+      { role: "system", content: analysisPrompt },
+      { role: "user", content: JSON.stringify(analysisInput) },
+    ],
+    text: { format: zodTextFormat(PronunciaSchema, "pronuncia") },
+  });
+
+  const pronunciation = response.output_parsed;
+
+  return {
+    text,
+    pronunciation,
+    asr: {
+      model: "gpt-4o-transcribe",
+      language,
+      avg_logprob: avgLogprob,
+      confidence: asrConfidence,
+    },
+  };
 }
 
 /**
@@ -146,26 +438,19 @@ socketWhatsApp.ev.on("messages.upsert", async (evento) => {
 
       for (const mensagem of evento.messages || []) {
         if (deveIgnorar(mensagem)) continue;
-
+          console.log("mensagem.message.audioMessage")
+console.log(mensagem.message.audioMessage)
   const stream = await downloadContentFromMessage(mensagem.message.audioMessage, "audio");
   const buffer = await bufferFromStream(stream);
-  const bufferTeste = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
-
-console.log(bufferTeste)
-
-const form = new FormData(); // ✅ global WHATWG do Node 24
-form.append("data", new Blob([buffer], { type: "audio/ogg" }), "audio.ogg");
-
-const r = await fetch("https://n8n.planoartistico.com/webhook-test/2411140f-2dad-44c2-a5f5-70b5b8612e54", {
-  method: "POST",
-  body: form, // ✅ sem headers manuais
+const wavBuffer = await whatsappAudioParaWavMono16kNormalizado(buffer);
+const r = await transcreverEAvaliarPronuncia({
+  file: await toFile(wavBuffer, "audio.wav", { type: "audio/wav" }),
+  filename: "whatsapp.ogg",
+  mimetype: "audio/ogg",
+  language: "en",
+  // targetText: "I would like to order a coffee, please.", // opcional, mas poderoso
 });
-
-const txt = await r.text();
-console.log("STATUS:", r.status);
-console.log("TXT:", txt);
-console.log("FormData global?", typeof globalThis.FormData, "Blob global?", typeof globalThis.Blob);
-
+  console.log(r)
 
       }
           /*
