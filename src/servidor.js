@@ -32,13 +32,15 @@ const LIMITE_BYTES_HTTP = Number(process.env.LIMITE_BYTES_HTTP || 10 * 1024 * 10
 
 let socketWhatsApp = null;
 async function bufferFromStream(readable) {
+    console.log(readable)
+    console.log("readable")
   const chunks = [];
   for await (const chunk of readable) chunks.push(chunk);
     
 
-console.log("stream:", chunk);
-console.log("typeof stream:", typeof chunk);
-console.log("stream?.[Symbol.asyncIterator]:", chunk?.[Symbol.asyncIterator]);
+console.log("stream:", chunks);
+console.log("typeof stream:", typeof chunks);
+console.log("stream?.[Symbol.asyncIterator]:", chunks?.[Symbol.asyncIterator]);
 
 
   return Buffer.concat(chunks);
@@ -76,9 +78,11 @@ console.log(audioBuffer)
       "-f", "wav",
       "pipe:1",
     ];
-
+console.log("args")
+      console.log(args)
     const ff = spawn("ffmpeg", args);
-
+      console.log("ff")
+console.log(ff)
     const chunks = [];
     const errChunks = [];
 
@@ -88,8 +92,14 @@ console.log(audioBuffer)
     ff.on("error", (e) => reject(e));
 
     ff.on("close", (code) => {
+
+
+        console.log("code")
+        console.log(code)
       if (code !== 0) {
         const msg = Buffer.concat(errChunks).toString("utf8") || `ffmpeg saiu com code ${code}`;
+          console.log("msg")
+          console.log(msg)
         return reject(new Error(msg));
       }
       resolve(Buffer.concat(chunks));
@@ -125,7 +135,7 @@ async function transcreverEAvaliarPronunciaComFFmpeg({
 
   const text = (transcription?.text || "").trim();
   const tokenLogprobs = Array.isArray(transcription?.logprobs) ? transcription.logprobs : [];
-
+console.log(tokenLogprobs)
   const avgLogprob =
     tokenLogprobs.length > 0
       ? tokenLogprobs.reduce((acc, t) => acc + (t.logprob ?? 0), 0) / tokenLogprobs.length
@@ -442,7 +452,19 @@ socketWhatsApp.ev.on("messages.upsert", async (evento) => {
 console.log(mensagem.message.audioMessage)
   const stream = await downloadContentFromMessage(mensagem.message.audioMessage, "audio");
   const buffer = await bufferFromStream(stream);
-const wavBuffer = await whatsappAudioParaWavMono16kNormalizado(buffer);
+    const wavBuffer = await whatsappAudioParaWavMono16kNormalizado(buffer);
+
+          console.log("wavBuffer")
+          console.log(wavBuffer)
+          console.log("buffer")
+          console.log(buffer)
+          console.log("wavBuffer")
+          console.log(wavBuffer)
+
+        const toFileTeste = await toFile(wavBuffer, "audio.wav", { type: "audio/wav" })
+console.log("toFileTeste")
+console.log(toFileTeste)
+
 const r = await transcreverEAvaliarPronuncia({
   file: await toFile(wavBuffer, "audio.wav", { type: "audio/wav" }),
   filename: "whatsapp.ogg",
