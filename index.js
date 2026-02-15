@@ -2,6 +2,12 @@ import { criarLimitadorRequisicoes } from "./util/seguranca.js";
 const rateLimit = require("express-rate-limit");
 const express = require("express");
 const qrcode = require("qrcode-terminal");
+import multer from "multer";
+import fs from "fs";
+import fsp from "fs/promises";
+import path from "path";
+import os from "os";
+import { spawn } from "child_process";
 const {
   default: makeWASocket,
   useMultiFileAuthState,
