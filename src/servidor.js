@@ -1,5 +1,6 @@
-import dotenv from "dotenv";
 dotenv.config({ path: "/root/baileys/.env" });
+
+import dotenv from "dotenv";
 
 import { spawn } from "node:child_process";
 import OpenAI, { toFile } from "openai";
@@ -38,11 +39,6 @@ async function bufferFromStream(readable) {
   for await (const chunk of readable) chunks.push(chunk);
     
 
-console.log("stream:", chunks);
-console.log("typeof stream:", typeof chunks);
-console.log("stream?.[Symbol.asyncIterator]:", chunks?.[Symbol.asyncIterator]);
-
-
   return Buffer.concat(chunks);
 
 
@@ -63,8 +59,6 @@ async function baixarAudioComoBuffer(audioMessage) {
 async function whatsappAudioParaWavMono16kNormalizado(audioBuffer) {
 
 
-console.log("audioBuffer")
-console.log(audioBuffer)
   return new Promise((resolve, reject) => {
     const args = [
       "-hide_banner",
@@ -78,11 +72,7 @@ console.log(audioBuffer)
       "-f", "wav",
       "pipe:1",
     ];
-console.log("args")
-      console.log(args)
     const ff = spawn("ffmpeg", args);
-      console.log("ff")
-console.log(ff)
     const chunks = [];
     const errChunks = [];
 
@@ -94,12 +84,8 @@ console.log(ff)
     ff.on("close", (code) => {
 
 
-        console.log("code")
-        console.log(code)
       if (code !== 0) {
         const msg = Buffer.concat(errChunks).toString("utf8") || `ffmpeg saiu com code ${code}`;
-          console.log("msg")
-          console.log(msg)
         return reject(new Error(msg));
       }
       resolve(Buffer.concat(chunks));
@@ -135,7 +121,6 @@ async function transcreverEAvaliarPronunciaComFFmpeg({
 
   const text = (transcription?.text || "").trim();
   const tokenLogprobs = Array.isArray(transcription?.logprobs) ? transcription.logprobs : [];
-console.log(tokenLogprobs)
   const avgLogprob =
     tokenLogprobs.length > 0
       ? tokenLogprobs.reduce((acc, t) => acc + (t.logprob ?? 0), 0) / tokenLogprobs.length
@@ -231,10 +216,6 @@ async function transcreverEAvaliarPronuncia({
   targetText,
 }) {
 
-console.log("AudioBuffer2")
-console.log(audioBuffer)
-console.log(filename)
-    
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   // 1) TRANSCRIÇÃO (alta fidelidade) + logprobs pra sinais de confiança
@@ -444,51 +425,54 @@ async function iniciarWhatsApp() {
    * O evento traz um array de mensagens: percorrei-o sempre. :contentReference[oaicite:7]{index=7}
    */
 socketWhatsApp.ev.on("messages.upsert", async (evento) => {
+
     if (evento.type !== "notify" && evento.type !== "append") return;
 
       for (const mensagem of evento.messages || []) {
         if (deveIgnorar(mensagem)) continue;
-          console.log("mensagem.message.audioMessage")
-console.log(mensagem.message.audioMessage)
-  const stream = await downloadContentFromMessage(mensagem.message.audioMessage, "audio");
-  const buffer = await bufferFromStream(stream);
-    const wavBuffer = await whatsappAudioParaWavMono16kNormalizado(buffer);
+            
 
-          console.log("wavBuffer")
-          console.log(wavBuffer)
-          console.log("buffer")
-          console.log(buffer)
-          console.log("wavBuffer")
-          console.log(wavBuffer)
+if (mensagem?.message?.audioMessage) {
+    const form = new FormData();
+    form.append("data", new Blob([mensagem?.message?.audioMessage], { type: "audio/ogg" }), {
+      filename: "audio.ogg",
+      contentType: "audio/ogg",
+    });
 
-        const toFileTeste = await toFile(wavBuffer, "audio.wav", { type: "audio/wav" })
-console.log("toFileTeste")
-console.log(toFileTeste)
+    // opcional: metadados em JSON junto
+    form.append("meta", JSON.stringify({ mimetype: "audio/ogg" }));
+    form.append("tipo", "audio");
+    form.append("remoteJid", mensagem?.key?.remoteJid);
+    const r = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
+      method: "POST",
+      body: form,
+    });
 
-const r = await transcreverEAvaliarPronuncia({
-  file: await toFile(wavBuffer, "audio.wav", { type: "audio/wav" }),
-  filename: "whatsapp.ogg",
-  mimetype: "audio/ogg",
-  language: "en",
-  // targetText: "I would like to order a coffee, please.", // opcional, mas poderoso
-});
-  console.log(r)
+    const txt = await r.text();
+    registro.info({ txt }, "Mensagem recebida.");
+}
 
-      }
-          /*
+if (mensagem?.message?.conversation) {
+
         const jidRemoto = mensagem?.key?.remoteJid;
         const texto = extrairTextoDaMensagem(mensagem);
 
-        registro.info({ jidRemoto, texto }, "Mensagem recebida.");
+        registro.info({ jidRemoto, texto, tipo: "texto" }, "Mensagem recebida.");
 
-        // Exemplo: comando simples e resposta citada (reply)
-        if (texto?.toLowerCase() === "ping") {
-          await responderConversa(jidRemoto, "Pong, com a pontualidade de um relógio suíço.", mensagem);
-        }
+      const res = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(registro.info),
+  });
+        
+        console.log("ires")
+        console.log(res)
       }
-    } catch (erro) {
-      registro.error({ erro }, "Erro ao tratar messages.upsert.");
-    }*/
+
+
+
+
+      }
 });
 
       
@@ -626,7 +610,6 @@ async function iniciarHttp() {
 
   // Enviar mídia
   app.post("/mensagem/midia",async (req, res) => {
-      console.logg(caminhoAudio)
     const { numero, caminhoAudio, ehPTT } = req.body;
 
   if (!caminhoAudio || typeof caminhoAudio !== "string") {
