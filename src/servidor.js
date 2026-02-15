@@ -430,9 +430,9 @@ socketWhatsApp.ev.on("messages.upsert", async (evento) => {
 
       for (const mensagem of evento.messages || []) {
         if (deveIgnorar(mensagem)) continue;
-            
 
 if (mensagem?.message?.audioMessage) {
+
     const form = new FormData();
     form.append("data", new Blob([mensagem?.message?.audioMessage], { type: "audio/ogg" }), {
       filename: "audio.ogg",
@@ -454,19 +454,20 @@ if (mensagem?.message?.audioMessage) {
 
 if (mensagem?.message?.conversation) {
 
+
         const jidRemoto = mensagem?.key?.remoteJid;
         const texto = extrairTextoDaMensagem(mensagem);
 
-        registro.info({ jidRemoto, texto, tipo: "texto" }, "Mensagem recebida.");
+        registro.info({ jidRemoto, texto, tipo: "texto" });
 
-      const res = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
+
+    //body: JSON.stringify(registro.info),
+  const res = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(registro.info),
+    body: JSON.stringify({ texto, remoteJid: jidRemoto, tipo: "texto"}),
   });
         
-        console.log("ires")
-        console.log(res)
       }
 
 
@@ -663,7 +664,7 @@ return res.json({
       res.json({ ok: true });
     } catch (erro) {
       res.status(400).json({ erro: String(erro.message || erro) });
-    }
+    }.planoartistico.com/mensagem/texto
   });
 
   // Responder conversa (reply/quote)
