@@ -1,3 +1,6 @@
+
+
+
 dotenv.config({ path: "/root/baileys/.env" });
 
 import dotenv from "dotenv";
