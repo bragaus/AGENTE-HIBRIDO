@@ -664,7 +664,7 @@ return res.json({
       res.json({ ok: true });
     } catch (erro) {
       res.status(400).json({ erro: String(erro.message || erro) });
-    }.planoartistico.com/mensagem/texto
+    }
   });
 
   // Responder conversa (reply/quote)
