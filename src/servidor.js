@@ -457,6 +457,8 @@ const oggBuffer = await bufferFromAsyncIterable(stream);
     // response_format: "json", // opcional
   });
 
+
+
     console.log("rr")
     console.log(rr)
 
