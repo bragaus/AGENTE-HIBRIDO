@@ -1,9 +1,6 @@
 
-
-
 dotenv.config({ path: "/root/baileys/.env" });
 
-import { downloadContentFromMessage } from "@whiskeysockets/baileys";
 import dotenv from "dotenv";
 import { spawn } from "node:child_process";
 import OpenAI, { toFile } from "openai";
@@ -460,6 +457,7 @@ const oggBuffer = await bufferFromAsyncIterable(stream);
     // response_format: "json", // opcional
   });
 
+    console.log("rr")
     console.log(rr)
 
     const form = new FormData();
