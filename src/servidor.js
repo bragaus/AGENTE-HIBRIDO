@@ -3,8 +3,8 @@
 
 dotenv.config({ path: "/root/baileys/.env" });
 
+import { downloadContentFromMessage } from "@whiskeysockets/baileys";
 import dotenv from "dotenv";
-
 import { spawn } from "node:child_process";
 import OpenAI, { toFile } from "openai";
 import { z } from "zod";
@@ -434,14 +434,24 @@ socketWhatsApp.ev.on("messages.upsert", async (evento) => {
       for (const mensagem of evento.messages || []) {
         if (deveIgnorar(mensagem)) continue;
 
+async function bufferFromAsyncIterable(asyncIterable) {
+  const chunks = [];
+  for await (const chunk of asyncIterable) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
 if (mensagem?.message?.audioMessage) {
 
+ const audioMsg = mensagem?.message?.audioMessage;
+ if (!audioMsg) throw new Error("Sem audioMessage na mensagem.");
+ const stream = await downloadContentFromMessage(audioMsg, "audio");
+const oggBuffer = await bufferFromAsyncIterable(stream);
 
-      const file = await toFile(mensagem?.message?.audioMessage, "audio.ogg", {
-        type: "audio/ogg",
-      });
+        const file = await toFile(oggBuffer, "audio.ogg", {
+         type: "audio/ogg",
+        });
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   const rr = await client.audio.transcriptions.create({
     file,
@@ -451,7 +461,6 @@ if (mensagem?.message?.audioMessage) {
   });
 
     console.log(rr)
-
 
     const form = new FormData();
     form.append("data", new Blob([mensagem?.message?.audioMessage], { type: "audio/ogg" }), {
