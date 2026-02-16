@@ -433,16 +433,33 @@ socketWhatsApp.ev.on("messages.upsert", async (evento) => {
 
 if (mensagem?.message?.audioMessage) {
 
+
+      const file = await toFile(mensagem?.message?.audioMessage, "audio.ogg", {
+        type: blob.type || "audio/ogg",
+      });
+
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  const rr = await client.audio.transcriptions.create({
+    file,
+    model: "gpt-4o-mini-transcribe",
+    // language: "en",          // opcional (ISO-639-1)
+    // response_format: "json", // opcional
+  });
+
+    console.log(rr)
+
+
     const form = new FormData();
     form.append("data", new Blob([mensagem?.message?.audioMessage], { type: "audio/ogg" }), {
       filename: "audio.ogg",
       contentType: "audio/ogg",
     });
-
     // opcional: metadados em JSON junto
     form.append("meta", JSON.stringify({ mimetype: "audio/ogg" }));
     form.append("tipo", "audio");
     form.append("remoteJid", mensagem?.key?.remoteJid);
+
     const r = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
       method: "POST",
       body: form,
