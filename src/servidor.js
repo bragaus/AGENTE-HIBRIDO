@@ -438,7 +438,7 @@ if (mensagem?.message?.audioMessage) {
 
 
       const file = await toFile(mensagem?.message?.audioMessage, "audio.ogg", {
-        type: blob.type || "audio/ogg",
+        type: "audio/ogg",
       });
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
