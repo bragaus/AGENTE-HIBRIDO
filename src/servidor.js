@@ -621,8 +621,8 @@ async function iniciarHttp() {
   //await enviarAudio(numero, resposta, ehPTT);
 
   const arrayBuffer = await resposta.arrayBuffer();
-const audio = await socketWhatsApp.sendMessage(numero, {
-     audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/zzz/meututor/001-Desafio.mp3" },
+    const audio = await socketWhatsApp.sendMessage(numero, {
+     audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-desafio.mp3" },
      mimetype: "audio/mpeg",
      ptt: false
    });
