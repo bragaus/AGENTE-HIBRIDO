@@ -32,21 +32,11 @@ const LIMITE_BYTES_HTTP = Number(process.env.LIMITE_BYTES_HTTP || 10 * 1024 * 10
 
 
 let socketWhatsApp = null;
+
 async function bufferFromStream(readable) {
-    console.log(readable)
-    console.log("readable")
   const chunks = [];
   for await (const chunk of readable) chunks.push(chunk);
-    
-
   return Buffer.concat(chunks);
-
-
-
-}
-
-
-async function baixarAudioComoBuffer(audioMessage) {
 }
 
 /**
@@ -426,40 +416,34 @@ async function iniciarWhatsApp() {
    */
 socketWhatsApp.ev.on("messages.upsert", async (evento) => {
 
-    if (evento.type !== "notify" && evento.type !== "append") return;
+  if (evento.type !== "notify" && evento.type !== "append") return;
 
-      for (const mensagem of evento.messages || []) {
-        if (deveIgnorar(mensagem)) continue;
+    for (const mensagem of evento.messages || []) {
+      if (deveIgnorar(mensagem)) continue;
 
-async function bufferFromAsyncIterable(asyncIterable) {
-  const chunks = [];
-  for await (const chunk of asyncIterable) chunks.push(Buffer.from(chunk));
-  return Buffer.concat(chunks);
+      async function bufferFromAsyncIterable(asyncIterable) {
+      const chunks = [];
+      for await (const chunk of asyncIterable) chunks.push(Buffer.from(chunk));
+      return Buffer.concat(chunks);
 }
 
 if (mensagem?.message?.audioMessage) {
 
- const audioMsg = mensagem?.message?.audioMessage;
- if (!audioMsg) throw new Error("Sem audioMessage na mensagem.");
- const stream = await downloadContentFromMessage(audioMsg, "audio");
-const oggBuffer = await bufferFromAsyncIterable(stream);
+  const audioMsg = mensagem?.message?.audioMessage;
+  if (!audioMsg) throw new Error("Sem audioMessage na mensagem.");
+  const stream = await downloadContentFromMessage(audioMsg, "audio");
+  const oggBuffer = await bufferFromAsyncIterable(stream);
 
-        const file = await toFile(oggBuffer, "audio.ogg", {
-         type: "audio/ogg",
-        });
+  const file = await toFile(oggBuffer, "audio.ogg", {
+    Itype: "audio/ogg",
+  });
 
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   const rr = await client.audio.transcriptions.create({
     file,
     model: "gpt-4o-mini-transcribe",
-    // language: "en",          // opcional (ISO-639-1)
-    // response_format: "json", // opcional
   });
-
-
-
-    console.log("rr")
     console.log(rr)
 
     const form = new FormData();
