@@ -438,13 +438,16 @@ if (mensagem?.message?.audioMessage) {
     Itype: "audio/ogg",
   });
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  console.log("file")
+  console.log(file)
 
-  const rr = await client.audio.transcriptions.create({
+  const client = new OpsadenAI({ apiKey: process.env.OPENAI_API_KEY });
+sdsdssaa saldasioj askd ien aslna asodm ;lksdfn jd lasjhd ,s skmcnj:Am a f;dfdskj 
+  kfasklf'lkdf 'sadkfa'k akflkj aCNMK F 'k 'LKL KFN LKfdn'f ojsd;LKM
+  consdaassst resposta_openai = await client.audio.transcriptions.create({
     file,
     model: "gpt-4o-mini-transcribe",
   });
-    console.log(rr)
 
     const form = new FormData();
     form.append("data", new Blob([mensagem?.message?.audioMessage], { type: "audio/ogg" }), {
@@ -455,14 +458,16 @@ if (mensagem?.message?.audioMessage) {
     form.append("meta", JSON.stringify({ mimetype: "audio/ogg" }));
     form.append("tipo", "audio");
     form.append("remoteJid", mensagem?.key?.remoteJid);
-
+    form.append("remoteJid", mensagem?.key?.remoteJid);
+    form.append("transciptions" )
     const r = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
       method: "POST",
       body: form,
     });
 
-    const txt = await r.text();
-    registro.info({ txt }, "Mensagem recebida.");
+   console.log(r)
+
+    registro.info({ r }, "Mensagem recebida.");
 }
 
 if (mensagem?.message?.conversation) {
@@ -647,6 +652,18 @@ return res.json({
       ok: true,
     });
 
+
+
+  });
+  // Simular digitando
+  app.post("/transcricao", async (req, res) => {
+    try {
+      console.log(req.body)
+      console.log(req)
+    } catch (erro) {
+      console.log(erro)
+    }
+  });
 
   });
   // Simular digitando
