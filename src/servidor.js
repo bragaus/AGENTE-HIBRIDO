@@ -608,6 +608,8 @@ async function iniciarHttp() {
   // Protege toda a API
   app.use(autenticarPorToken);
 
+
+
   // Saúde
   app.get("/saude", (req, res) => {
     const conectado = Boolean(socketWhatsApp?.user);
@@ -629,7 +631,7 @@ async function iniciarHttp() {
 
   // Enviar mídia
   app.post("/mensagem/midia",async (req, res) => {
-    const { numero, caminhoAudio, ehPTT } = req.body;
+  const { numero, caminhoAudio, ehPTT } = req.body;
 
   if (!caminhoAudio || typeof caminhoAudio !== "string") {
     return res.status(400).json({ ok: false, erro: "caminhoAudio inválido" });
@@ -666,6 +668,7 @@ return res.json({
   });
 
   });
+
   // Simular digitando
   app.post("/presenca/digitando", async (req, res) => {
     try {
