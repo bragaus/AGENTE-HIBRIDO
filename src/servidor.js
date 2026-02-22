@@ -1,737 +1,728 @@
+/**
+ * ╔══════════════════════════════════════════════════════════════════════════════╗
+ * ║         SERVIDOR DE COMUNICAÇÃO TELEGRÁFICA VIA PROTOCOLO WHATSAPP          ║
+ * ║                                                                              ║
+ * ║  Apparatus construído segundo os princípios da Filosofia Natural Moderna,    ║
+ * ║  destinado à interceptação, análise e encaminhamento de mensagens oriundas  ║
+ * ║  do éter digital, com rigorosa observância dos postulados termodinâmicos    ║
+ * ║  da conservação da informação.                                               ║
+ * ║                                                                              ║
+ * ║  Autor: Pesquisador Sênior do Gabinete de Ciências Aplicadas, Anno 1880     ║
+ * ╚══════════════════════════════════════════════════════════════════════════════╝
+ */
 
-dotenv.config({ path: "/root/baileys/.env" });
-
+// ─────────────────────────────────────────────────────────────────────────────
+// § I. IMPORTAÇÃO DOS INSTRUMENTOS CIENTÍFICOS NECESSÁRIOS À EXPERIMENTAÇÃO
+//   Assim como o naturalista municia-se de lente e bisturi antes de adentrar
+//   o laboratório, importamos aqui os módulos indispensáveis à operação.
+// ─────────────────────────────────────────────────────────────────────────────
+import multer from "multer";
 import dotenv from "dotenv";
-import { spawn } from "node:child_process";
-import OpenAI, { toFile } from "openai";
-import { z } from "zod";
-import { zodTextFormat } from "openai/helpers/zod";
-import "dotenv/config";
+dotenv.config({
+  path: "/home/bragaus/Documentos/MEUTUTOR/AGENTE_HIBRIDO_BACKEND/.env",
+});
 import express from "express";
+import cors from "cors";
 import pino from "pino";
 import qrcode from "qrcode-terminal";
+import OpenAI, { toFile } from "openai";
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
-  downloadContentFromMessage
+  downloadContentFromMessage,
+  getContentType,
 } from "@whiskeysockets/baileys";
 
-import { aplicarCabecalhosSeguranca, criarLimitadorRequisicoes, autenticarPorToken, exigirTexto } from "./util/seguranca.js";
-import { lerArquivoLocalCautelosamente, mimetypePorExtensao } from "./util/midia.js";
+// ─────────────────────────────────────────────────────────────────────────────
+// § II. CONSTANTES FUNDAMENTAIS DO SISTEMA — OS AXIOMAS DO EXPERIMENTO
+//   Do mesmo modo que Euclides postulou seus axiomas geométricos, definimos
+//   aqui os parâmetros imutáveis sobre os quais repousa todo o edifício lógico.
+// ─────────────────────────────────────────────────────────────────────────────
+const PORTA_DO_TELEGRAFO     = Number(process.env.PORTA_HTTP        ?? 3789);
+const DIRETORIO_CREDENCIAIS  = "./estado-auth";
+const LIMITE_BYTES_REQUISICAO= Number(2 * 1024 * 1024);
+const SEGREDO_DO_PORTAO      = process.env.TOKEN_API                 ?? "";
+const CHAVE_OPENAI           = process.env.OPENAI_API_KEY;
 
-const registro = pino({
-  level: "info",
-  transport: { target: "pino-pretty", options: { colorize: true } }
+/** URL interna do próprio servidor — ponto de acoplamento entre Baileys e a rota HTTP */
+const URL_ENDPOINT_TRANSCRICAO = `http://localhost:${PORTA_DO_TELEGRAFO}/transcricao`;
+console.log(URL_ENDPOINT_TRANSCRICAO)
+// ─────────────────────────────────────────────────────────────────────────────
+// § III. INSTANCIAÇÃO DOS INSTRUMENTOS DE MEDIÇÃO E OBSERVAÇÃO
+//   O galvanômetro do cientista é aqui substituído pelo registro estruturado
+//   de eventos, capaz de preservar a cronologia exata dos fenômenos observados.
+// ─────────────────────────────────────────────────────────────────────────────
+const registroCientifico = pino({
+  level: process.env.LOG_NIVEL ?? "info",
+  transport: { target: "pino-pretty", options: { colorize: true } },
 });
 
-const PORTA_HTTP = Number(process.env.PORTA_HTTP || 3789);
-const PASTA_AUTENTICACAO = process.env.PASTA_AUTENTICACAO || "./estado-auth";
-const LIMITE_BYTES_HTTP = Number(process.env.LIMITE_BYTES_HTTP || 10 * 1024 * 1024);
+const clienteOpenAI = new OpenAI({ apiKey: CHAVE_OPENAI });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// § IV. APPARATUS HTTP — O TELÉGRAFO EM SI MESMO
+//   A instância Express é declarada no escopo global do módulo, pois ela
+//   representa o canal de comunicação partilhado entre todos os subsistemas,
+//   análoga ao éter luminífero que permeia todo o espaço observável.
+// ─────────────────────────────────────────────────────────────────────────────
+const aparatoHTTP = express();
 
-let socketWhatsApp = null;
-
-async function bufferFromStream(readable) {
-  const chunks = [];
-  for await (const chunk of readable) chunks.push(chunk);
-  return Buffer.concat(chunks);
-}
+aparatoHTTP.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
 
 /**
- * Converte qualquer áudio (ex.: OGG/Opus WhatsApp) para WAV mono 16k + normalizado.
- * Entrada e saída via memória (Buffer), sem arquivos temporários.
+ * Instrumento de recepção de ficheiros multipartes.
+ * Mantém o conteúdo binário em memória volátil (Buffer), adequado para
+ * transmissão imediata às câmaras de análise da OpenAI.
+ */
+const receptorMultipartes = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB — limite imposto pela câmara de transcrição
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// § V. ESTADO MUTABLE DO SISTEMA — A "VARIÁVEL DE ESTADO" DA EXPERIÊNCIA
+//   Variável única que preserva a referência ao soquete WhatsApp ativo,
+//   permitindo o envio de mensagens em qualquer ponto do programa.
+// ─────────────────────────────────────────────────────────────────────────────
+let soqueteWhatsApp = null;
+
+// ══════════════════════════════════════════════════════════════════════════════
+//                     § VI. FUNÇÕES AUXILIARES PURAS
+//   Estas funções não possuem efeitos colaterais observáveis, constituindo
+//   assim verdadeiros "lemas" em nossa demonstração maior.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Converte um fluxo contínuo de fragmentos em um único corpus binário coerente.
+ * Análogo à destilação fracionada: reunimos as frações em um único recipiente.
  *
+ * @param {AsyncIterable} fluxo - Corrente de fragmentos binários
+ * @returns {Promise<Buffer>}
  */
-
-
-async function whatsappAudioParaWavMono16kNormalizado(audioBuffer) {
-
-
-  return new Promise((resolve, reject) => {
-    const args = [
-      "-hide_banner",
-      "-loglevel", "error",
-      "-y",
-      "-i", "pipe:0",
-      "-ac", "1",
-      "-ar", "16000",
-      "-c:a", "pcm_s16le",
-      "-af", "loudnorm=I=-16:LRA=11:TP=-1.5",
-      "-f", "wav",
-      "pipe:1",
-    ];
-    const ff = spawn("ffmpeg", args);
-    const chunks = [];
-    const errChunks = [];
-
-    ff.stdout.on("data", (d) => chunks.push(d));
-    ff.stderr.on("data", (d) => errChunks.push(d));
-
-    ff.on("error", (e) => reject(e));
-
-    ff.on("close", (code) => {
-
-
-      if (code !== 0) {
-        const msg = Buffer.concat(errChunks).toString("utf8") || `ffmpeg saiu com code ${code}`;
-        return reject(new Error(msg));
-      }
-      resolve(Buffer.concat(chunks));
-    });
-
-    ff.stdin.end(audioBuffer);
-  });
+async function fluxoParaBuffer(fluxo) {
+  const fragmentos = [];
+  for await (const fragmento of fluxo) fragmentos.push(fragmento);
+  return Buffer.concat(fragmentos);
 }
 
 /**
- * Transcreve + avalia pronúncia, com pré-processamento ffmpeg (WAV mono 16k normalizado).
- */
-async function transcreverEAvaliarPronunciaComFFmpeg({
-  audioBuffer,
-  filenameOriginal = "whatsapp.ogg",
-  mimetypeOriginal = "audio/ogg",
-  language = "en",
-  targetText,
-}) {
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-  // 0) PREP: padroniza áudio (melhora fidelidade e estabilidade)
-  const wavBuffer = await whatsappAudioParaWavMono16kNormalizado(audioBuffer);
-
-  // 1) TRANSCRIÇÃO (alta fidelidade)
-  const transcription = await openai.audio.transcriptions.create({
-    file: await toFile(wavBuffer, "audio.wav", { type: "audio/wav" }),
-    model: "gpt-4o-transcribe",
-    language,
-    response_format: "json",
-    include: ["logprobs"],
-  });
-
-  const text = (transcription?.text || "").trim();
-  const tokenLogprobs = Array.isArray(transcription?.logprobs) ? transcription.logprobs : [];
-  const avgLogprob =
-    tokenLogprobs.length > 0
-      ? tokenLogprobs.reduce((acc, t) => acc + (t.logprob ?? 0), 0) / tokenLogprobs.length
-      : null;
-
-  const asrConfidence =
-    avgLogprob == null
-      ? null
-      : 1 / (1 + Math.exp(-((avgLogprob + 1.2) * 2.2)));
-
-  // 2) AVALIAÇÃO DE PRONÚNCIA (JSON estável)
-  const PronunciaSchema = z.object({
-    score: z.number().min(0).max(100),
-    level: z.enum(["ruim", "ok", "boa", "excelente"]),
-    summary_pt: z.string(),
-    strengths: z.array(z.string()),
-    improvements: z.array(z.string()),
-    tips: z.array(z.string()),
-    detected_issues: z.array(
-      z.enum([
-        "hesitation",
-        "mumbling",
-        "stress_intonation",
-        "vowel_clarity",
-        "consonant_clarity",
-        "pace_too_fast",
-        "pace_too_slow",
-        "unclear_words",
-      ])
-    ),
-  });
-
-  const analysisPrompt = [
-    "Você é uma professora de inglês especialista em pronúncia.",
-    "Responda SOMENTE em JSON conforme o schema.",
-    "Avalie a pronúncia usando transcript + sinais do ASR (asr_confidence/avg_logprob).",
-    "Se houver targetText, compare o que era esperado vs. falado e penalize omissões/trocas.",
-    "Dê dicas práticas curtas de treino (10–20s).",
-  ].join("\n");
-
-  const analysisInput = {
-    transcript: text,
-    targetText: targetText ?? null,
-    asr_confidence: asrConfidence,
-    avg_logprob: avgLogprob,
-    token_count: tokenLogprobs.length,
-    worst_tokens: tokenLogprobs
-      .slice()
-      .sort((a, b) => (a.logprob ?? 0) - (b.logprob ?? 0))
-      .slice(0, 12)
-      .map((t) => ({ token: t.token, logprob: t.logprob })),
-    source_audio: { filenameOriginal, mimetypeOriginal },
-  };
-
-  const response = await openai.responses.parse({
-    model: "gpt-4o-mini",
-    input: [
-      { role: "system", content: analysisPrompt },
-      { role: "user", content: JSON.stringify(analysisInput) },
-    ],
-    text: { format: zodTextFormat(PronunciaSchema, "pronuncia") },
-  });
-
-  return {
-    text,
-    pronunciation: response.output_parsed,
-    asr: {
-      model: "gpt-4o-transcribe",
-      language,
-      avg_logprob: avgLogprob,
-      confidence: asrConfidence,
-      preprocessed: { format: "wav", sample_rate: 16000, channels: 1, normalized: "loudnorm I=-16" },
-    },
-  };
-}
-
-/**
- * Transcreve áudio (WhatsApp) e avalia pronúncia.
+ * Desvela a mensagem contida em envelopes efêmeros ou de visualização única.
+ * Como o naturalista que remove as camadas de tecido para examinar o órgão,
+ * extraímos aqui o conteúdo fundamental da mensagem.
  *
- * @param {Object} params
- * @param {Buffer} params.audioBuffer  - Buffer do áudio (ex.: ogg/opus do WhatsApp já decodificado/baixado)
- * @param {string} params.filename     - Nome do arquivo (ex.: "audio.ogg")
- * @param {string} params.mimetype     - MIME (ex.: "audio/ogg")
- * @param {string} [params.language]   - ISO-639-1 (ex.: "en"). Se você souber que é inglês, passe "en". :contentReference[oaicite:3]{index=3}
- * @param {string} [params.targetText] - (Opcional mas MUITO forte) frase-alvo esperada do aluno
- * @returns {Promise<Object>}          - { text, pronunciation, asr }
+ * @param {object} mensagemBaileys - Objeto de mensagem bruta do Baileys
+ * @returns {object|null}
  */
-async function transcreverEAvaliarPronuncia({
-  audioBuffer,
-  filename,
-  mimetype,
-  language = "en",
-  targetText,
-}) {
+function extrairMensagemNuclear(mensagemBaileys) {
+  /* caso nao tenha conteudo no message  */
+  if (!mensagemBaileys?.message) return null;
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  let nucleo = mensagemBaileys.message;
+  console.log(nucleo)
 
-  // 1) TRANSCRIÇÃO (alta fidelidade) + logprobs pra sinais de confiança
-  const transcription = await openai.audio.transcriptions.create({
-    file: await toFile(audioBuffer, filename, { type: mimetype }),
-    model: "gpt-4o-transcribe",
-    language,                 // "en" melhora precisão/latência se for mesmo inglês :contentReference[oaicite:4]{index=4}
-    response_format: "json",  // requerido p/ logprobs nesse modelo :contentReference[oaicite:5]{index=5}
-    include: ["logprobs"],    // devolve logprobs por token :contentReference[oaicite:6]{index=6}
-  });
 
-  const text = (transcription?.text || "").trim();
-  const tokenLogprobs = Array.isArray(transcription?.logprobs) ? transcription.logprobs : [];
+  // Desinvoltura do envelope efêmero (mensagens que se autodestroem)
+  if (nucleo.ephemeralMessage?.message)   nucleo = nucleo.ephemeralMessage.message;
 
-  // Heurística simples de “clareza/confiança” (0..1) baseada em logprobs.
-  // (Não é “pronúncia perfeita”, mas correlaciona com inteligibilidade.)
-  const avgLogprob =
-    tokenLogprobs.length > 0
-      ? tokenLogprobs.reduce((acc, t) => acc + (t.logprob ?? 0), 0) / tokenLogprobs.length
-      : null;
+  // Desinvoltura dos envelopes de visualização única (primeira e segunda geração)
+  if (nucleo.viewOnceMessage?.message)    nucleo = nucleo.viewOnceMessage.message;
+  if (nucleo.viewOnceMessageV2?.message)  nucleo = nucleo.viewOnceMessageV2.message;
 
-  // Mapeia avgLogprob (tipicamente negativo) pra 0..1 com uma sigmoid suave
-  const asrConfidence =
-    avgLogprob == null
-      ? null
-      : 1 / (1 + Math.exp(-((avgLogprob + 1.2) * 2.2))); // ajuste empírico
-
-  // 2) AVALIAÇÃO DE PRONÚNCIA (Structured Output)
-  const PronunciaSchema = z.object({
-    score: z.number().min(0).max(100),
-    level: z.enum(["ruim", "ok", "boa", "excelente"]),
-    summary_pt: z.string(),          // resumo em português
-    strengths: z.array(z.string()),  // pontos fortes
-    improvements: z.array(z.string()),// pontos a melhorar
-    tips: z.array(z.string()),       // dicas práticas
-    detected_issues: z.array(
-      z.enum([
-        "hesitation",
-        "mumbling",
-        "stress_intonation",
-        "vowel_clarity",
-        "consonant_clarity",
-        "pace_too_fast",
-        "pace_too_slow",
-        "unclear_words",
-      ])
-    ),
-  });
-
-  const analysisPrompt = [
-    "Você é uma professora de inglês especialista em pronúncia.",
-    "Responda SOMENTE em JSON (conforme o schema).",
-    "Avalie a pronúncia do aluno usando:",
-    "- o texto transcrito (o que ele realmente falou)",
-    "- sinais de confiança do ASR (asr_confidence / avg_logprob)",
-    "- e, se houver, a frase-alvo esperada (targetText) para medir desvio.",
-    "",
-    "Se targetText existir, compare o sentido e a forma: palavras faltando, trocadas, contrações, finais de palavras, etc.",
-    "Se targetText NÃO existir, foque em inteligibilidade, clareza, fluência e naturalidade para um falante não-nativo.",
-    "",
-    "Retorne dicas práticas e curtas (treinos de 10–20s).",
-  ].join("\n");
-
-  const analysisInput = {
-    transcript: text,
-    targetText: targetText ?? null,
-    asr_confidence: asrConfidence,
-    avg_logprob: avgLogprob,
-    token_count: tokenLogprobs.length,
-    // Pequena amostra de tokens “piorzinhos” ajuda a achar trechos problemáticos
-    worst_tokens: tokenLogprobs
-      .slice()
-      .sort((a, b) => (a.logprob ?? 0) - (b.logprob ?? 0))
-      .slice(0, 12)
-      .map((t) => ({ token: t.token, logprob: t.logprob })),
-  };
-
-  const response = await openai.responses.parse({
-    model: "gpt-4o-mini", // bom custo/benefício pra avaliação textual; pode subir pra um maior se quiser
-    input: [
-      { role: "system", content: analysisPrompt },
-      { role: "user", content: JSON.stringify(analysisInput) },
-    ],
-    text: { format: zodTextFormat(PronunciaSchema, "pronuncia") },
-  });
-
-  const pronunciation = response.output_parsed;
-
-  return {
-    text,
-    pronunciation,
-    asr: {
-      model: "gpt-4o-transcribe",
-      language,
-      avg_logprob: avgLogprob,
-      confidence: asrConfidence,
-    },
-  };
+  return nucleo;
 }
 
 /**
- * Extrai texto de uma mensagem do WhatsApp (casos comuns).
- * Em vossa jornada, podereis ampliar para buttons, list, template, etc.
+ * Extrai o conteúdo textual clássico de uma mensagem, percorrendo as
+ * variantes morfológicas conhecidas da espécie "mensagem WhatsApp".
+ *
+ * @param {object} mensagemBaileys
+ * @returns {string}
  */
-function extrairTextoDaMensagem(mensagem) {
-  const conteudo = mensagem?.message;
+function extrairTextoConvencional(mensagemBaileys) {
+  const conteudo = mensagemBaileys?.message;
   if (!conteudo) return "";
 
-/*  if (conteudo.conversation) {
-    return { type: "text", content: conteudo.conversation };
-  }
-
-  if (conteudo.extendedTextMessage?.text) {
-    return { type: "extended_text", content: conteudo.extendedTextMessage.text };
-  }
-
-  if (conteudo.imageMessage?.caption) {
-    return { type: "image", content: conteudo.imageMessage.caption };
-  }
-
-  if (conteudo.videoMessage?.caption) {
-    return { type: "video", content: conteudo.videoMessage.caption };
-  }
-
-  if (conteudo.audioMessage) {
-    return { type: "audio", content: conteudo.audioMessage };
-  }
-*/
-    
   return (
-    conteudo.conversation ||
-    conteudo.extendedTextMessage?.text ||
-    conteudo.imageMessage?.caption ||
-    conteudo.videoMessage?.caption ||
-    conteudo.audioMessage ||
+    conteudo.conversation                    ||
+    conteudo.extendedTextMessage?.text       ||
+    conteudo.imageMessage?.caption           ||
+    conteudo.videoMessage?.caption           ||
     ""
   );
-
 }
 
 /**
- * Decide se a mensagem deve ser ignorada (ex.: mensagens enviadas por nós mesmos).
+ * Determina se a mensagem deve ser descartada do ciclo de análise.
+ * Mensagens de nossa própria autoria são ignoradas para evitar a
+ * paradoxal auto-referência circular.
+ *
+ * @param {object} mensagemBaileys
+ * @returns {boolean}
  */
-function deveIgnorar(mensagem) {
-  // "fromMe" = mensagem originada da própria conta conectada
-  return  false//Boolean(mensagem?.key?.fromMe);
+function deveDescartarMensagem(mensagemBaileys) {
 }
 
 /**
- * Constrói e inicia a conexão Baileys.
- * Observação: há breaking changes relevantes (v7+). :contentReference[oaicite:6]{index=6}
+ * Extrai o corpus binário do áudio contido na mensagem, seja ele
+ * transmitido como nota de voz ou como documento anexo de natureza sonora.
+ *
+ * @param {object} mensagemBaileys
+ * @returns {Promise<{buffer: Buffer, mimeType: string, fileName: string, segundos?: number, notaDeVoz?: boolean}|null>}
  */
-async function iniciarWhatsApp() {
-  
-  const { state: estadoAuth, saveCreds: salvarCredenciais } = await useMultiFileAuthState(PASTA_AUTENTICACAO);
+async function extrairBufferDeAudio(mensagemBaileys) {
+  const nucleo = extrairMensagemNuclear(mensagemBaileys);
+  if (!nucleo) return null;
 
-  const { version } = await fetchLatestBaileysVersion();
+  const tipoDaEntidade = getContentType(nucleo);
 
-  socketWhatsApp = makeWASocket({
-    version,
-    logger: registro,
-    auth: {
-      creds: estadoAuth.creds,
-      keys: makeCacheableSignalKeyStore(estadoAuth.keys, registro)
-    },
-    // Boas maneiras: reduz ruído de “presença disponível”
-    emitOwnEvents: false,
-    markOnlineOnConnect: false,
-    syncFullHistory: false
-  });
+  // ── Caso I: Nota de voz ou arquivo de áudio nativo do WhatsApp ──
+  if (tipoDaEntidade === "audioMessage") {
+    const entidadeAudio = nucleo.audioMessage;
+    const corrente = await downloadContentFromMessage(entidadeAudio, "audio");
+    const corpo = await fluxoParaBuffer(corrente);
 
-  // Persistência de credenciais
-  socketWhatsApp.ev.on("creds.update", salvarCredenciais);
-
-  // Conexão e reconexão
-  socketWhatsApp.ev.on("connection.update", (atualizacao) => {
-    const { connection, lastDisconnect, qr } = atualizacao;
-
-  // 📜 Exibir QR de forma explícita
-  if (qr) {
-    qrcode.generate(qr, { small: true });
-    console.log("\n================ QR CODE ================\n");
-    console.log(qr);
-    console.log("\n========================================\n");
+    return {
+      buffer:     corpo,
+      mimeType:   entidadeAudio.mimetype ?? "audio/ogg; codecs=opus",
+      fileName:   "audio.ogg",
+      segundos:   entidadeAudio.seconds,
+      notaDeVoz:  entidadeAudio.ptt ?? false,
+    };
   }
 
-    if (connection === "close") {
-      const motivo = lastDisconnect?.error?.output?.statusCode;
-      const deveReconectar = motivo !== DisconnectReason.loggedOut;
+  // ── Caso II: Documento anexado com tipo MIME de natureza sonora ──
+  if (tipoDaEntidade === "documentMessage") {
+    const documento = nucleo.documentMessage;
+    const mimeDoDocumento = documento.mimetype ?? "";
+    if (!mimeDoDocumento.startsWith("audio/")) return null;
 
-      registro.warn({ motivo, deveReconectar }, "Conexão encerrada.");
+    const corrente = await downloadContentFromMessage(documento, "document");
+    const corpo = await fluxoParaBuffer(corrente);
 
-      if (deveReconectar) {
-        iniciarWhatsApp().catch((erro) => registro.error({ erro }, "Falha ao reconectar."));
-      } else {
-        registro.error("Sessão deslogada. É mister autenticar novamente.");
-      }
+    return {
+      buffer:    corpo,
+      mimeType:  mimeDoDocumento,
+      fileName:  documento.fileName ?? "audio.bin",
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Submete o corpus binário de áudio à câmara de transcrição da OpenAI,
+ * obtendo em retorno a representação textual do conteúdo fonético.
+ * Guarda de segurança: o limite de 25 MB é lei inflexível da câmara.
+ *
+ * @param {{ buffer: Buffer, fileName: string, idioma?: string }} parametros
+ * @returns {Promise<string>}
+ */
+async function transcreverAudioViaOpenAI({ buffer, fileName, idioma = "pt" }) {
+  const LIMITE_MAXIMO = 25 * 1024 * 1024;
+
+  if (buffer.length > LIMITE_MAXIMO) {
+    throw new Error(
+      `Corpus sonoro excessivo: ${(buffer.length / 1_048_576).toFixed(2)} MB. ` +
+      `O limite da câmara de transcrição é de 25 MB.`
+    );
+  }
+
+  const arquivoSubmetido = await toFile(buffer, fileName ?? "audio.ogg");
+
+  const resultado = await clienteOpenAI.audio.transcriptions.create({
+    model:    "gpt-4o-transcribe",
+    file:     arquivoSubmetido,
+    language: idioma,
+  });
+
+  return resultado.text;
+}
+
+/**
+ * Algoritmo de retrocesso exponencial com ruído aditivo.
+ * Inspirado na teoria do campo de Maxwell: evitamos ressonâncias
+ * prejudiciais (thundering herd) introduzindo perturbações estocásticas.
+ *
+ * @param {number} tentativa   - Número ordinal da tentativa atual
+ * @param {number} tetoMs      - Limite superior do intervalo de espera
+ * @returns {number} Milissegundos de espera recomendados
+ */
+function calcularRetrocessoExponencial(tentativa, tetoMs = 30_000) {
+  const componente_base  = Math.min(tetoMs, 500 * 2 ** tentativa);
+  const perturbacao      = Math.floor(Math.random() * 250);
+  return componente_base + perturbacao;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//       § VII. TRANSMISSÃO INTERNA — ACOPLAMENTO ENTRE BAILEYS E HTTP
+//   Esta função constitui a "correia de transmissão" entre o motor Baileys
+//   e o mecanismo receptor da rota POST /transcricao.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Envia os dados de uma mensagem recebida para o endpoint interno /transcricao,
+ * construindo um FormData multipartes com todos os campos pertinentes.
+ * Se a mensagem contiver áudio, este é transcrito e incluído no envelope.
+ *
+ * @param {object} mensagemBaileys   - Objeto bruto proveniente do Baileys
+ * @param {string} [transcricao]     - Transcrição fonética (se disponível)
+ * @returns {Promise<void>}
+ */
+async function encaminharMensagemParaEndpoint(mensagemBaileys, transcricao) {
+    
+  console.log("mensagemBaileys")
+  console.log(mensagemBaileys)
+  console.log(transcricao)
+  console.log(transcricao)
+
+
+
+  /*
+  const identificadorRemoto = mensagemBaileys?.key?.remoteJid ?? "desconhecido";
+  const textoConvencional   = extrairTextoConvencional(mensagemBaileys);
+  const momentoDoTelegrafo  = new Date().toISOString();
+
+  const envelopeFormulario = new FormData();
+  envelopeFormulario.append("remetenteJid",       identificadorRemoto);
+  envelopeFormulario.append("textoConvencional",  textoConvencional);
+  envelopeFormulario.append("transcricaoAudio",   transcricao ?? "");
+  envelopeFormulario.append("recebidoEm",         momentoDoTelegrafo);
+  envelopeFormulario.append("mensagemCompleta",   JSON.stringify(mensagemBaileys));
+  
+
+  try {
+    const respostaTelegrafo = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
+      method:  "POST",
+      body: JSON.stringify(envelopeFormulario),
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      // Nota: não definimos Content-Type manualmente; o fetch o constrói
+      // automaticamente com o boundary correto do multipart/form-data
+    });
+
+    if (!respostaTelegrafo.ok) {
+      registroCientifico.warn(
+        { status: respostaTelegrafo.status, remetente: identificadorRemoto },
+        "O endpoint rejeitou o envelope — anomalia na transmissão."
+      );
+      return;
+    }
+
+    const corpoResposta = await respostaTelegrafo.json();
+    registroCientifico.info(
+      { remetente: identificadorRemoto, resposta: corpoResposta },
+      "Mensagem encaminhada com êxito ao endpoint de transcrição."
+    );
+  } catch (erroTransmissao) {
+    registroCientifico.error(
+      { erroTransmissao, remetente: identificadorRemoto },
+      "Falha na transmissão interna — o éter resistiu à nossa comunicação."
+    );
+  }*/
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//          § VIII. NÚCLEO BAILEYS — O MOTOR DA MÁQUINA TELEGRÁFICA
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Estabelece e mantém a conexão com o servidor WhatsApp via protocolo Baileys.
+ * Esta função encarna o princípio da persistência: ao ser interrompida,
+ * ela tenta restaurar a conexão através de retrocessos exponenciais,
+ * como o barco que, mesmo após a tempestade, retorna ao seu curso.
+ *
+ * @returns {Promise<object>} Soquete WebSocket ativo
+ */
+async function iniciarConexaoWhatsApp() {
+  // Recuperamos o estado quântico da sessão anterior (credenciais criptográficas)
+  const { state: estadoDaSessao, saveCreds: preservarCredenciais } =
+    await useMultiFileAuthState(DIRETORIO_CREDENCIAIS);
+
+  const { version: versaoProtocolo } = await fetchLatestBaileysVersion();
+
+  registroCientifico.info(
+    { versaoProtocolo },
+    "Versão do protocolo Baileys identificada — iniciando a conjunção com o servidor."
+  );
+
+  soqueteWhatsApp = makeWASocket({
+    version:             versaoProtocolo,
+    logger:              registroCientifico,
+    auth: {
+      creds: estadoDaSessao.creds,
+      keys:  makeCacheableSignalKeyStore(estadoDaSessao.keys, registroCientifico),
+    },
+    emitOwnEvents:       false, // Ignoramos nossos próprios telegrama — evitamos o paradoxo
+    markOnlineOnConnect: false, // Não perturbamos a presença social da conta
+    syncFullHistory:     false, // Apenas o presente nos interessa
+  });
+
+  // ── Persistência das Credenciais: A Memória da Máquina ──
+  soqueteWhatsApp.ev.on("creds.update", preservarCredenciais);
+
+  // ── Controle de Reconexão ──
+  let contadorDeTentativas = 0;
+
+  soqueteWhatsApp.ev.on("connection.update", async (atualizacaoDeEstado) => {
+    const { connection, lastDisconnect, qr: codigoQR } = atualizacaoDeEstado;
+
+    // Fenômeno do QR: o observador deve "colapsar a função de onda" escaneando
+    if (codigoQR) {
+      qrcode.generate(codigoQR, { small: true });
+      registroCientifico.info(
+        "Código QR gerado — aguarda-se a intervenção do observador para estabelecer a ligação."
+      );
     }
 
     if (connection === "open") {
-      registro.info("Conexão estabelecida com o WhatsApp.");
+      contadorDeTentativas = 0;
+      registroCientifico.info(
+        "Conexão estabelecida com pleno êxito — o referencial inercial encontra-se estável."
+      );
+      return;
+    }
+
+    if (connection === "close") {
+      const codigoDeEncerramento = lastDisconnect?.error?.output?.statusCode;
+      const sessaoDeslogada      = codigoDeEncerramento === DisconnectReason.loggedOut;
+
+      registroCientifico.warn(
+        { codigoDeEncerramento, sessaoDeslogada },
+        "A conexão foi encerrada — investigando as causas do fenômeno."
+      );
+
+      if (sessaoDeslogada) {
+        registroCientifico.error(
+          "Sessão invalidada pelo servidor remoto. Faz-se necessária nova autenticação via QR."
+        );
+        return; // Não tentamos reconectar — seria fútil sem novas credenciais
+      }
+
+      contadorDeTentativas += 1;
+      const intervaloDeEspera = calcularRetrocessoExponencial(contadorDeTentativas);
+
+      registroCientifico.warn(
+        { contadorDeTentativas, intervaloDeEspera },
+        "Iniciando protocolo de reconexão com retrocesso exponencial — a persistência é virtude científica."
+      );
+
+      setTimeout(() => {
+        iniciarConexaoWhatsApp().catch((erroFatal) =>
+          registroCientifico.error(
+            { erroFatal },
+            "Reconexão malograda — o fenômeno exige investigação manual."
+          )
+        );
+      }, intervaloDeEspera);
     }
   });
 
-  /**
-   * Mensagens entrantes: messages.upsert
-   * O evento traz um array de mensagens: percorrei-o sempre. :contentReference[oaicite:7]{index=7}
-   */
-socketWhatsApp.ev.on("messages.upsert", async (evento) => {
+  // ────────────────────────────────────────────────────────────────────────────
+  // EVENTO I: messages.upsert — A Chegada do Telegrama
+  //
+  // Cada mensagem recebida é tratada como um novo espécime de laboratório:
+  // identificamos sua natureza, extraímos seu conteúdo e o encaminhamos
+  // ao endpoint de análise para processamento posterior.
+  // ────────────────────────────────────────────────────────────────────────────
+  soqueteWhatsApp.ev.on("messages.upsert", async (eventoDeChegada) => {
+    // Aceitamos apenas notificações em tempo real e appendagens de histórico
+    if (eventoDeChegada.type !== "notify" && eventoDeChegada.type !== "append") return;
+    for (const mensagemRecebida of eventoDeChegada.messages ?? []) {
+      // Descartamos os ecos de nossa própria voz — evitamos a auto-referência
+      //if (deveDescartarMensagem(mensagemRecebida)) continue;
 
-  if (evento.type !== "notify" && evento.type !== "append") return;
+      const identificadorRemoto = mensagemRecebida?.key?.remoteJid ?? "desconhecido";
+        { identificadorRemoto },
+        "Novo espécime recebido — iniciando o processo de análise."
+      );
 
-    for (const mensagem of evento.messages || []) {
-      if (deveIgnorar(mensagem)) continue;
+      // ── Tentativa de extração e transcrição do áudio ──
+      let transcricaoFonetica = null;
 
-      async function bufferFromAsyncIterable(asyncIterable) {
-      const chunks = [];
-      for await (const chunk of asyncIterable) chunks.push(Buffer.from(chunk));
-      return Buffer.concat(chunks);
-}
+      try {
+        const corpusSonoro = await extrairBufferDeAudio(mensagemRecebida);
+        console.log(corpusSonoro)
 
-if (mensagem?.message?.audioMessage) {
+        if (corpusSonoro) {
+          registroCientifico.info(
+            { identificadorRemoto, bytes: corpusSonoro.buffer.length },
+            "Corpus sonoro detectado — submetendo à câmara de transcrição fonética."
+          );
 
-  const audioMsg = mensagem?.message?.audioMessage;
-  if (!audioMsg) throw new Error("Sem audioMessage na mensagem.");
-  const stream = await downloadContentFromMessage(audioMsg, "audio");
-  const oggBuffer = await bufferFromAsyncIterable(stream);
+          transcricaoFonetica = await transcreverAudioViaOpenAI({
+            buffer:   corpusSonoro.buffer,
+            fileName: corpusSonoro.fileName,
+            idioma:   "en",
+          });
 
-  const file = await toFile(oggBuffer, "audio.ogg", {
-    Itype: "audio/ogg",
-  });
+          registroCientifico.info(
+            { identificadorRemoto, transcricao: transcricaoFonetica },
+            "Transcrição concluída com êxito — o fenômeno acústico foi convertido em grafemas."
+          );
 
-  console.log("file")
-  console.log(file)
+          console.log(registroCientifico)
 
-  const client = new OpsadenAI({ apiKey: process.env.OPENAI_API_KEY });
-sdsdssaa saldasioj askd ien aslna asodm ;lksdfn jd lasjhd ,s skmcnj:Am a f;dfdskj 
-  kfasklf'lkdf 'sadkfa'k akflkj aCNMK F 'k 'LKL KFN LKfdn'f ojsd;LKM
-  consdaassst resposta_openai = await client.audio.transcriptions.create({
-    file,
-    model: "gpt-4o-mini-transcribe",
-  });
-
-    const form = new FormData();
-    form.append("data", new Blob([mensagem?.message?.audioMessage], { type: "audio/ogg" }), {
-      filename: "audio.ogg",
-      contentType: "audio/ogg",
-    });
-    // opcional: metadados em JSON junto
-    form.append("meta", JSON.stringify({ mimetype: "audio/ogg" }));
-    form.append("tipo", "audio");
-    form.append("remoteJid", mensagem?.key?.remoteJid);
-    form.append("remoteJid", mensagem?.key?.remoteJid);
-    form.append("transciptions" )
-    const r = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
-      method: "POST",
-      body: form,
-    });
-
-   console.log(r)
-
-    registro.info({ r }, "Mensagem recebida.");
-}
-
-if (mensagem?.message?.conversation) {
-
-
-        const jidRemoto = mensagem?.key?.remoteJid;
-        const texto = extrairTextoDaMensagem(mensagem);
-
-        registro.info({ jidRemoto, texto, tipo: "texto" });
-
-
-    //body: JSON.stringify(registro.info),
-  const res = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ texto, remoteJid: jidRemoto, tipo: "texto"}),
-  });
-        
+        }
+      } catch (erroTranscricao) {
+        registroCientifico.warn(
+          { erroTranscricao, identificadorRemoto },
+          "Falha na transcrição — prosseguiremos sem ela."
+        );
       }
 
-
-
-
-      }
-});
-
-      
-
-  // Eventos adicionais úteis (catálogo parcial)
-  socketWhatsApp.ev.on("messages.update", (atualizacoes) => {
-    registro.debug({ atualizacoes }, "messages.update");
-  });
-
-  socketWhatsApp.ev.on("presence.update", (presenca) => {
-    registro.debug({ presenca }, "presence.update");
-  });
-
-  // Chamadas (call) existem no mapa de eventos do Baileys. :contentReference[oaicite:8]{index=8}
-  socketWhatsApp.ev.on("call", (eventosChamada) => {
-    registro.info({ eventosChamada }, "Evento de chamada.");
-  });
-
-  return socketWhatsApp;
-}
-
-/* ==========================
- * Funções públicas do WhatsApp
- * ========================== */
-
-/**
- * Envia texto.
- */
-async function enviarTexto(jidDestino, texto) {
-  return socketWhatsApp.sendMessage(jidDestino, { text: texto });
-}
-
-/**
- * Envia imagem (local) com legenda opcional.
- */
-async function enviarImagem(jidDestino, caminhoImagem, legenda = "") {
-  const { caminhoAbsoluto } = lerArquivoLocalCautelosamente(caminhoImagem);
-  return socketWhatsApp.sendMessage(jidDestino, {
-    image: { url: caminhoAbsoluto },
-    caption: legenda
-  });
-}
-
-/**
- * Envia vídeo (local) com legenda opcional.
- */
-async function enviarVideo(jidDestino, caminhoVideo, legenda = "") {
-  const { caminhoAbsoluto } = lerArquivoLocalCautelosamente(caminhoVideo);
-  return socketWhatsApp.sendMessage(jidDestino, {
-    video: { url: caminhoAbsoluto },
-    caption: legenda
-  });
-}
-
-/**
- * Envia áudio (local). Pode ser PTT (mensagem de voz) se desejardes.
- */
-async function enviarAudio(jidDestino, caminhoAudio, comoPtt = false) {
-    const { caminhoAbsoluto } = lerArquivoLocalCautelosamente(caminhoAudio);
-  const mimetype = mimetypePorExtensao(caminhoAbsoluto);
-
-  return socketWhatsApp.sendMessage(jidDestino, {
-    audio: { url: caminhoAbsoluto },
-    mimetype,
-    ptt: Boolean(comoPtt)
-  });
-}
-
-/**
- * Envia “digitando…” (composing) e depois “pausado”.
- * Presença suportada: unavailable | available | composing | recording | paused. :contentReference[oaicite:9]{index=9}
- */
-async function simularDigitando(jidDestino, milissegundos = 1200) {
-  await socketWhatsApp.sendPresenceUpdate("composing", jidDestino);
-  await new Promise((r) => setTimeout(r, milissegundos));
-  await socketWhatsApp.sendPresenceUpdate("paused", jidDestino);
-}
-
-/**
- * Reage a uma mensagem com emoji.
- * O react usa a chave (key) da mensagem alvo. :contentReference[oaicite:10]{index=10}
- */
-async function reagirMensagem(jidDestino, chaveMensagem, emoji) {
-  return socketWhatsApp.sendMessage(jidDestino, {
-    react: { key: chaveMensagem, text: emoji }
-  });
-}
-
-/**
- * Responde uma conversa citando (quoted) a mensagem recebida.
- * Isto cria o “reply” no cliente do WhatsApp.
- */
-async function responderConversa(jidDestino, textoResposta, mensagemOriginal) {
-  return socketWhatsApp.sendMessage(
-    jidDestino,
-    { text: textoResposta },
-    { quoted: mensagemOriginal }
-  );
-}
-
-/* ==========================
- * Servidor HTTP (Express)
- * ========================== */
-
-async function iniciarHttp() {
-  const app = express();
-
-  aplicarCabecalhosSeguranca(app);
-
-  app.use(criarLimitadorRequisicoes());
-  app.use(express.json({ limit: LIMITE_BYTES_HTTP }));
-  app.use(express.urlencoded({ extended: true, limit: LIMITE_BYTES_HTTP }));
-
-  // Protege toda a API
-  app.use(autenticarPorToken);
-
-
-
-  // Saúde
-  app.get("/saude", (req, res) => {
-    const conectado = Boolean(socketWhatsApp?.user);
-    res.json({ ok: true, conectado });
-  });
-
-  // Enviar texto
-  app.post("/mensagem/texto", async (req, res) => {
-    try {
-      const jidDestino = exigirTexto(req.body, "jidDestino");
-      const texto = exigirTexto(req.body, "texto");
-
-      await enviarTexto(jidDestino, texto);
-      res.json({ ok: true });
-    } catch (erro) {
-      res.status(400).json({ erro: String(erro.message || erro) });
+      // ── Encaminhamento ao endpoint interno ──
+      await encaminharMensagemParaEndpoint(mensagemRecebida, transcricaoFonetica);
     }
   });
 
-  // Enviar mídia
-  app.post("/mensagem/midia",async (req, res) => {
-  const { numero, caminhoAudio, ehPTT } = req.body;
+  // ────────────────────────────────────────────────────────────────────────────
+  // EVENTO II: messages.reaction — A Reação ao Telegrama
+  //
+  // As reações (emojis) constituem um fenômeno paralelo às mensagens textuais,
+  // análogo às anotações marginais que os estudiosos apõem aos manuscritos.
+  // Observamo-las separadamente para preservar a integridade taxonômica.
+  // ────────────────────────────────────────────────────────────────────────────
+  soqueteWhatsApp.ev.on("messages.reaction", async (listaDeReacoes) => {
+    for (const reacao of listaDeReacoes ?? []) {
+      const identificadorRemoto  = reacao?.key?.remoteJid    ?? "desconhecido";
+      const atorDaReacao         = reacao?.reaction?.key?.participant
+                                ?? reacao?.key?.participant
+                                ?? "remetente não identificado";
+      const emojiEmitido         = reacao?.reaction?.text    ?? "";
+      const mensagemAlvo         = reacao?.reaction?.key?.id ?? "id-desconhecido";
 
-  if (!caminhoAudio || typeof caminhoAudio !== "string") {
-    return res.status(400).json({ ok: false, erro: "caminhoAudio inválido" });
+      registroCientifico.info(
+        { identificadorRemoto, atorDaReacao, emojiEmitido, mensagemAlvo },
+        "Reação simbólica detectada — registrando o fenômeno emotivo no diário de campo."
+      );
+
+      // Construímos o envelope da reação para encaminhar ao mesmo endpoint
+      const envelopeReacao = new FormData();
+      envelopeReacao.append("tipo",              "reacao");
+      envelopeReacao.append("remetenteJid",      identificadorRemoto);
+      envelopeReacao.append("autorDaReacao",     atorDaReacao);
+      envelopeReacao.append("emoji",             emojiEmitido);
+      envelopeReacao.append("mensagemAlvoId",    mensagemAlvo);
+      envelopeReacao.append("recebidoEm",        new Date().toISOString());
+      envelopeReacao.append("reacaoCompleta",    JSON.stringify(reacao));
+
+      try {
+        const respostaTelegrafo = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
+          method: "POST",
+          body:   envelopeReacao,
+        });
+
+        if (!respostaTelegrafo.ok) {
+          registroCientifico.warn(
+            { status: respostaTelegrafo.status },
+            "O endpoint recusou o envelope da reação."
+          );
+        }
+      } catch (erroEnvio) {
+        registroCientifico.error(
+          { erroEnvio },
+          "Falha ao transmitir a reação ao endpoint — perturbação no éter digital."
+        );
+      }
+    }
+  });
+
+  return soqueteWhatsApp;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//        § IX. MIDDLEWARE DE AUTENTICAÇÃO — O GUARDA DO PORTÃO
+//   Apenas portadores do token secreto poderão fazer uso dos recursos
+//   do servidor. A ciência exige rigor tanto na metodologia quanto no acesso.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Intercepta as requisições e verifica a posse do token de autenticação.
+ * Se o SEGREDO_DO_PORTAO estiver vazio, o acesso é liberado a todos —
+ * útil em ambiente de desenvolvimento, perigoso em produção.
+ */
+function verificarTokenDeAcesso(requisicao, resposta, proximo) {
+  if (!SEGREDO_DO_PORTAO) return proximo();
+
+  const cabecalhoAutorizacao = String(requisicao.headers.authorization ?? "");
+  const tokenValido          = cabecalhoAutorizacao === `Bearer ${SEGREDO_DO_PORTAO}`;
+
+  if (!tokenValido) {
+    return resposta
+      .status(401)
+      .json({ ok: false, erro: "Token de acesso inválido ou ausente — acesso negado." });
   }
 
-  const resposta = await fetch(caminhoAudio); // ✅ agora é URL de verdade
-  //await enviarAudio(numero, resposta, ehPTT);
-
-  const arrayBuffer = await resposta.arrayBuffer();
-    const audio = await socketWhatsApp.sendMessage(numero, {
-     audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-desafio.mp3" },
-     mimetype: "audio/mpeg",
-     ptt: false
-   });
-
-  // aqui você envia com Baileys (exemplo genérico)
-  // await sock.sendMessage(numero, { audio: buffer, ptt: !!ehPTT, mimetype: "audio/mpeg" });
-
-return res.json({
-      ok: true,
-    });
-
-
-
-  });
-  // Simular digitando
-  app.post("/transcricao", async (req, res) => {
-    try {
-      console.log(req.body)
-      console.log(req)
-    } catch (erro) {
-      console.log(erro)
-    }
-  });
-
-  });
-
-  // Simular digitando
-  app.post("/presenca/digitando", async (req, res) => {
-    try {
-      const jidDestino = exigirTexto(req.body, "jidDestino");
-      const milissegundos = Number(req.body?.milissegundos || 1200);
-      await simularDigitando(jidDestino, milissegundos);
-      res.json({ ok: true });
-    } catch (erro) {
-      res.status(400).json({ erro: String(erro.message || erro) });
-    }
-  });
-
-  // Reagir
-  app.post("/mensagem/reacao", async (req, res) => {
-    try {
-      const jidDestino = exigirTexto(req.body, "jidDestino");
-      const emoji = exigirTexto(req.body, "emoji");
-
-      // Espera-se que o cliente envie a key completa, obtida do evento messages.upsert
-      const chaveMensagem = req.body?.chaveMensagem;
-      if (!chaveMensagem || typeof chaveMensagem !== "object") {
-        throw new Error("chaveMensagem inválida (objeto esperado).");
-      }
-
-      await reagirMensagem(jidDestino, chaveMensagem, emoji);
-      res.json({ ok: true });
-    } catch (erro) {
-      res.status(400).json({ erro: String(erro.message || erro) });
-    }
-  });
-
-  // Responder conversa (reply/quote)
-  app.post("/conversa/responder", async (req, res) => {
-    try {
-      const jidDestino = exigirTexto(req.body, "jidDestino");
-      const textoResposta = exigirTexto(req.body, "textoResposta");
-
-      const mensagemOriginal = req.body?.mensagemOriginal;
-      if (!mensagemOriginal || typeof mensagemOriginal !== "object") {
-        throw new Error("mensagemOriginal inválida (objeto esperado).");
-      }
-
-      await responderConversa(jidDestino, textoResposta, mensagemOriginal);
-      res.json({ ok: true });
-    } catch (erro) {
-      res.status(400).json({ erro: String(erro.message || erro) });
-    }
-  });
-
-  app.listen(PORTA_HTTP, () => {
-    registro.info({ PORTA_HTTP }, "Servidor HTTP em funcionamento.");
-  });
+  proximo();
 }
 
-/* ==========================
- * Partida do sistema
- * ========================== */
+// ══════════════════════════════════════════════════════════════════════════════
+//      § X. ROTAS HTTP — AS ESTAÇÕES RECEPTORAS DO SISTEMA TELEGRÁFICO
+// ══════════════════════════════════════════════════════════════════════════════
 
-(async () => {
-  await iniciarWhatsApp();     // WhatsApp primeiro, para evitar “API viva, WhatsApp morto”
-  await iniciarHttp();
-})().catch((erro) => {
-  registro.error({ erro }, "Falha fatal ao iniciar.");
-  process.exit(1);
+/**
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │  POST /transcricao                                                      │
+ * │                                                                         │
+ * │  Estação central de recepção de mensagens e transcrições.               │
+ * │  Aceita um envelope multipartes contendo campos textuais e,             │
+ * │  opcionalmente, arquivos binários (áudios e documentos de apoio).       │
+ * │                                                                         │
+ * │  Campos esperados no FormData:                                          │
+ * │   - remetenteJid        : identificador JID do remetente                │
+ * │   - textoConvencional   : corpo textual da mensagem                     │
+ * │   - transcricaoAudio    : resultado da transcrição fonética             │
+ * │   - recebidoEm          : carimbo temporal ISO 8601                     │
+ * │   - mensagemCompleta    : JSON serializado do objeto bruto              │
+ * │   - tipo                : "mensagem" | "reacao"                         │
+ * │   - arquivoApoio        : ficheiro auxiliar (opcional, 1 ficheiro)      │
+ * │   - audios              : ficheiros de áudio adicionais (opcional, 20)  │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ */
+aparatoHTTP.post(
+  "/transcricao",
+  verificarTokenDeAcesso,
+  receptorMultipartes.fields([
+    { name: "arquivoApoio", maxCount: 1  },
+    { name: "audios",       maxCount: 20 },
+  ]),
+  (requisicao, resposta) => {
+    // ── Extração dos campos textuais do envelope multipartes ──
+    const {
+      remetenteJid,
+      textoConvencional,
+      transcricaoAudio,
+      recebidoEm,
+      mensagemCompleta,
+      tipo,
+      // Campos específicos de reação:
+      autorDaReacao,
+      emoji,
+      mensagemAlvoId,
+      reacaoCompleta,
+    } = requisicao.body;
+
+    // ── Extração dos ficheiros binários ──
+    const arquivoApoio = requisicao.files?.arquivoApoio?.[0] ?? null;
+    const audiosAnexos = requisicao.files?.audios            ?? [];
+
+    // ── Registro no diário de campo ──
+    registroCientifico.info(
+      {
+        tipo:              tipo ?? "mensagem",
+        remetente:         remetenteJid,
+        temTexto:          Boolean(textoConvencional),
+        temTranscricao:    Boolean(transcricaoAudio),
+        qtdAudios:         audiosAnexos.length,
+        temArquivoApoio:   Boolean(arquivoApoio),
+        recebidoEm,
+      },
+      "Envelope recebido e desempacotado na estação central."
+    );
+
+    // ── Reconstituição do objeto de mensagem (se disponível) ──
+    let objetoMensagem = null;
+    try {
+      if (mensagemCompleta) objetoMensagem = JSON.parse(mensagemCompleta);
+    } catch {
+      registroCientifico.warn("Falha ao reconstituir o objeto JSON da mensagem.");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  ↓↓↓  PONTO DE INTEGRAÇÃO COM O VUE 3  ↓↓↓
+    //  Aqui você tem acesso a todos os dados extraídos da mensagem.
+    //  Implemente a lógica de negócio, persistência ou re-emissão via socket.io.
+    // ══════════════════════════════════════════════════════════════════════════
+
+    return resposta.json({
+      ok: true,
+      analiseCientifica: {
+        tipo:            tipo ?? "mensagem",
+        remetente:       remetenteJid,
+        texto:           textoConvencional   ?? null,
+        transcricao:     transcricaoAudio    ?? null,
+        recebidoEm:      recebidoEm          ?? null,
+        mensagem:        objetoMensagem,
+        // Dados exclusivos de reação:
+        reacao: tipo === "reacao"
+          ? { autor: autorDaReacao, emoji, mensagemAlvo: mensagemAlvoId }
+          : null,
+        // Metadados dos ficheiros recebidos:
+        arquivos: {
+          apoio: arquivoApoio
+            ? { nome: arquivoApoio.originalname, mime: arquivoApoio.mimetype, bytes: arquivoApoio.size }
+            : null,
+          audios: audiosAnexos.map((a) => ({
+            nome:  a.originalname,
+            mime:  a.mimetype,
+            bytes: a.size,
+          })),
+        },
+      },
+    });
+  }
+);
+
+/**
+ * GET /saude — Verificação da vitalidade do servidor.
+ * Como o médico que ausculta o paciente, este endpoint confirma
+ * que o coração do sistema pulsa com regularidade.
+ */
+aparatoHTTP.get("/saude", (_req, res) => {
+  res.json({
+    ok:              true,
+    servidor:        "servidor-baileys",
+    portaTelegrafo:  PORTA_DO_TELEGRAFO,
+    whatsappConectado: soqueteWhatsApp?.ws?.readyState === 1,
+    horaDoServidor:  new Date().toISOString(),
+  });
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+//         § XI. INICIALIZAÇÃO DO COSMOS — O "BIG BANG" DO SERVIDOR
+//   Assim como o universo emergiu de um ponto singular de energia concentrada,
+//   nosso servidor inicia-se a partir deste bloco assíncrono fundamental.
+// ══════════════════════════════════════════════════════════════════════════════
+
+(async () => {
+  registroCientifico.info("══════════════════════════════════════════════════════");
+  registroCientifico.info("  Servidor Telegráfico WhatsApp — Inicialização       ");
+  registroCientifico.info("══════════════════════════════════════════════════════");
+
+  // Passo I: Erguemos o servidor HTTP antes de conectar ao WhatsApp,
+  //          pois ele precisa estar pronto para receber os primeiros telegramas
+  await new Promise((resolver) => {
+    aparatoHTTP.listen(PORTA_DO_TELEGRAFO, () => {
+      registroCientifico.info(
+        { porta: PORTA_DO_TELEGRAFO },
+        "Servidor HTTP erguido — as portas do laboratório estão abertas."
+      );
+      resolver();
+    });
+  });
+
+  // Passo II: Estabelecemos a conexão com o WhatsApp
+  await iniciarConexaoWhatsApp();
+
+  registroCientifico.info(
+    "Todos os subsistemas operacionais — o experimento está em curso."
+  );
+})().catch((erroFatal) => {
+  registroCientifico.error(
+    { erroFatal },
+    "Colapso irrecuperável do referencial — o cosmos entrou em singularidade. Encerrando."
+  );
+  process.exit(1);
+});
