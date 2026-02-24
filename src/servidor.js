@@ -34,20 +34,20 @@ import makeWASocket, {
   downloadContentFromMessage,
   getContentType,
 } from "@whiskeysockets/baileys";
-
+import { Sequelize, DataTypes, Model } from "sequelize";
 // ─────────────────────────────────────────────────────────────────────────────
 // § II. CONSTANTES FUNDAMENTAIS DO SISTEMA — OS AXIOMAS DO EXPERIMENTO
 //   Do mesmo modo que Euclides postulou seus axiomas geométricos, definimos
 //   aqui os parâmetros imutáveis sobre os quais repousa todo o edifício lógico.
 // ─────────────────────────────────────────────────────────────────────────────
-const PORTA_DO_TELEGRAFO     = Number(process.env.PORTA_HTTP        ?? 3789);
+const PORTA_DO_TELEGRAFO     = Number(process.env.PORTA_HTTP);
 const DIRETORIO_CREDENCIAIS  = "./estado-auth";
 const LIMITE_BYTES_REQUISICAO= Number(2 * 1024 * 1024);
-const SEGREDO_DO_PORTAO      = process.env.TOKEN_API                 ?? "";
+const SEGREDO_DO_PORTAO      = process.env.TOKEN_API;
 const CHAVE_OPENAI           = process.env.OPENAI_API_KEY;
 
 /** URL interna do próprio servidor — ponto de acoplamento entre Baileys e a rota HTTP */
-const URL_ENDPOINT_TRANSCRICAO = `http://localhost:${PORTA_DO_TELEGRAFO}/transcricao`;
+const URL_ENDPOINT_TRANSCRICAO = `http://localhost:7773/transcricao`;
 console.log(URL_ENDPOINT_TRANSCRICAO)
 // ─────────────────────────────────────────────────────────────────────────────
 // § III. INSTANCIAÇÃO DOS INSTRUMENTOS DE MEDIÇÃO E OBSERVAÇÃO
@@ -162,17 +162,6 @@ function extrairTextoConvencional(mensagemBaileys) {
 }
 
 /**
- * Determina se a mensagem deve ser descartada do ciclo de análise.
- * Mensagens de nossa própria autoria são ignoradas para evitar a
- * paradoxal auto-referência circular.
- *
- * @param {object} mensagemBaileys
- * @returns {boolean}
- */
-function deveDescartarMensagem(mensagemBaileys) {
-}
-
-/**
  * Extrai o corpus binário do áudio contido na mensagem, seja ele
  * transmitido como nota de voz ou como documento anexo de natureza sonora.
  *
@@ -227,7 +216,7 @@ async function extrairBufferDeAudio(mensagemBaileys) {
  * @param {{ buffer: Buffer, fileName: string, idioma?: string }} parametros
  * @returns {Promise<string>}
  */
-async function transcreverAudioViaOpenAI({ buffer, fileName, idioma = "pt" }) {
+async function transcreverAudioViaOpenAI({ buffer, fileName, idioma = "en" }) {
   const LIMITE_MAXIMO = 25 * 1024 * 1024;
 
   if (buffer.length > LIMITE_MAXIMO) {
@@ -278,44 +267,30 @@ function calcularRetrocessoExponencial(tentativa, tetoMs = 30_000) {
  * @param {string} [transcricao]     - Transcrição fonética (se disponível)
  * @returns {Promise<void>}
  */
-async function encaminharMensagemParaEndpoint(mensagemBaileys, transcricao) {
-    
-  console.log("mensagemBaileys")
-  console.log(mensagemBaileys)
-  console.log(transcricao)
-  console.log(transcricao)
-
-
-
-  /*
+async function encaminharMensagemParaEndpoint(mensagemBaileys, transcricao = null) {
   const identificadorRemoto = mensagemBaileys?.key?.remoteJid ?? "desconhecido";
-  const textoConvencional   = extrairTextoConvencional(mensagemBaileys);
-  const momentoDoTelegrafo  = new Date().toISOString();
 
-  const envelopeFormulario = new FormData();
-  envelopeFormulario.append("remetenteJid",       identificadorRemoto);
-  envelopeFormulario.append("textoConvencional",  textoConvencional);
-  envelopeFormulario.append("transcricaoAudio",   transcricao ?? "");
-  envelopeFormulario.append("recebidoEm",         momentoDoTelegrafo);
-  envelopeFormulario.append("mensagemCompleta",   JSON.stringify(mensagemBaileys));
-  
+  console.log("================================== function do post")
+  console.log(mensagemBaileys)
+  console.log("====================================")
+  console.log(transcricao)
 
   try {
-    const respostaTelegrafo = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
-      method:  "POST",
-      body: JSON.stringify(envelopeFormulario),
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      // Nota: não definimos Content-Type manualmente; o fetch o constrói
-      // automaticamente com o boundary correto do multipart/form-data
+    const respostaTelegrafo = await fetch(process.env.NN_URL, {
+       method: "POST",
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify({
+         remetenteJid: identificadorRemoto,
+         transcricaoAudio: transcricao ?? "",
+       }),
     });
+
+    console.log(respostaTelegrafo)
 
     if (!respostaTelegrafo.ok) {
       registroCientifico.warn(
         { status: respostaTelegrafo.status, remetente: identificadorRemoto },
-        "O endpoint rejeitou o envelope — anomalia na transmissão."
+        "O endpoint rejeitou o envelope."
       );
       return;
     }
@@ -323,14 +298,14 @@ async function encaminharMensagemParaEndpoint(mensagemBaileys, transcricao) {
     const corpoResposta = await respostaTelegrafo.json();
     registroCientifico.info(
       { remetente: identificadorRemoto, resposta: corpoResposta },
-      "Mensagem encaminhada com êxito ao endpoint de transcrição."
+      "Mensagem encaminhada com êxito."
     );
   } catch (erroTransmissao) {
     registroCientifico.error(
       { erroTransmissao, remetente: identificadorRemoto },
-      "Falha na transmissão interna — o éter resistiu à nossa comunicação."
+      "Falha na transmissão interna."
     );
-  }*/
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -439,51 +414,60 @@ async function iniciarConexaoWhatsApp() {
   soqueteWhatsApp.ev.on("messages.upsert", async (eventoDeChegada) => {
     // Aceitamos apenas notificações em tempo real e appendagens de histórico
     if (eventoDeChegada.type !== "notify" && eventoDeChegada.type !== "append") return;
-    for (const mensagemRecebida of eventoDeChegada.messages ?? []) {
-      // Descartamos os ecos de nossa própria voz — evitamos a auto-referência
-      //if (deveDescartarMensagem(mensagemRecebida)) continue;
+      for (const mensagemRecebida of eventoDeChegada.messages ?? []) {
 
-      const identificadorRemoto = mensagemRecebida?.key?.remoteJid ?? "desconhecido";
-        { identificadorRemoto },
-        "Novo espécime recebido — iniciando o processo de análise."
-      );
+          //if (deveDescartarMensagem(mensagemRecebida)) continue;
 
-      // ── Tentativa de extração e transcrição do áudio ──
-      let transcricaoFonetica = null;
-
-      try {
-        const corpusSonoro = await extrairBufferDeAudio(mensagemRecebida);
-        console.log(corpusSonoro)
-
-        if (corpusSonoro) {
+          const identificadorRemoto = mensagemRecebida?.key?.remoteJid ?? "desconhecido";
+          
           registroCientifico.info(
-            { identificadorRemoto, bytes: corpusSonoro.buffer.length },
-            "Corpus sonoro detectado — submetendo à câmara de transcrição fonética."
+            { identificadorRemoto },
+            "Novo espécime recebido — iniciando o processo de análise."
           );
 
-          transcricaoFonetica = await transcreverAudioViaOpenAI({
-            buffer:   corpusSonoro.buffer,
-            fileName: corpusSonoro.fileName,
-            idioma:   "en",
-          });
+          // ── Tentativa de extração e transcrição do áudio ──
+          var  transcricaoFonetica = null;
 
-          registroCientifico.info(
-            { identificadorRemoto, transcricao: transcricaoFonetica },
-            "Transcrição concluída com êxito — o fenômeno acústico foi convertido em grafemas."
-          );
+          try {
+            const corpusSonoro = await extrairBufferDeAudio(mensagemRecebida);
 
-          console.log(registroCientifico)
+            if (corpusSonoro) {
+              registroCientifico.info(
+                { identificadorRemoto, bytes: corpusSonoro.buffer.length },
+                "Corpus sonoro detectado — submetendo à câmara de transcrição fonética."
+              );
 
-        }
+              transcricaoFonetica = await transcreverAudioViaOpenAI({
+                buffer:   corpusSonoro.buffer,
+                fileName: corpusSonoro.fileName,
+                idioma:   "en",
+              });
+              
+              console.log(transcricaoFonetica)
+
+              registroCientifico.info(
+                { identificadorRemoto, transcricao: transcricaoFonetica },
+                "Transcrição concluída com êxito — o fenômeno acústico foi convertido em grafemas."
+              );
+
+              const respostaPSQL = await fetch(process.env.NN_URL, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Accept": "application/json",
+                },
+                body: JSON.stringify({ identificadorRemoto, transcricaoFonetica }),
+              });
+             
+            }
       } catch (erroTranscricao) {
         registroCientifico.warn(
           { erroTranscricao, identificadorRemoto },
           "Falha na transcrição — prosseguiremos sem ela."
         );
       }
-
       // ── Encaminhamento ao endpoint interno ──
-      await encaminharMensagemParaEndpoint(mensagemRecebida, transcricaoFonetica);
+      // await encaminharMensagemParaEndpoint(mensagemRecebida, transcricaoFonetica);
     }
   });
 
@@ -494,51 +478,6 @@ async function iniciarConexaoWhatsApp() {
   // análogo às anotações marginais que os estudiosos apõem aos manuscritos.
   // Observamo-las separadamente para preservar a integridade taxonômica.
   // ────────────────────────────────────────────────────────────────────────────
-  soqueteWhatsApp.ev.on("messages.reaction", async (listaDeReacoes) => {
-    for (const reacao of listaDeReacoes ?? []) {
-      const identificadorRemoto  = reacao?.key?.remoteJid    ?? "desconhecido";
-      const atorDaReacao         = reacao?.reaction?.key?.participant
-                                ?? reacao?.key?.participant
-                                ?? "remetente não identificado";
-      const emojiEmitido         = reacao?.reaction?.text    ?? "";
-      const mensagemAlvo         = reacao?.reaction?.key?.id ?? "id-desconhecido";
-
-      registroCientifico.info(
-        { identificadorRemoto, atorDaReacao, emojiEmitido, mensagemAlvo },
-        "Reação simbólica detectada — registrando o fenômeno emotivo no diário de campo."
-      );
-
-      // Construímos o envelope da reação para encaminhar ao mesmo endpoint
-      const envelopeReacao = new FormData();
-      envelopeReacao.append("tipo",              "reacao");
-      envelopeReacao.append("remetenteJid",      identificadorRemoto);
-      envelopeReacao.append("autorDaReacao",     atorDaReacao);
-      envelopeReacao.append("emoji",             emojiEmitido);
-      envelopeReacao.append("mensagemAlvoId",    mensagemAlvo);
-      envelopeReacao.append("recebidoEm",        new Date().toISOString());
-      envelopeReacao.append("reacaoCompleta",    JSON.stringify(reacao));
-
-      try {
-        const respostaTelegrafo = await fetch("https://n8n.planoartistico.com/webhook-test/cec8958e-a7fe-4611-9737-51537e029a12", {
-          method: "POST",
-          body:   envelopeReacao,
-        });
-
-        if (!respostaTelegrafo.ok) {
-          registroCientifico.warn(
-            { status: respostaTelegrafo.status },
-            "O endpoint recusou o envelope da reação."
-          );
-        }
-      } catch (erroEnvio) {
-        registroCientifico.error(
-          { erroEnvio },
-          "Falha ao transmitir a reação ao endpoint — perturbação no éter digital."
-        );
-      }
-    }
-  });
-
   return soqueteWhatsApp;
 }
 
@@ -554,16 +493,16 @@ async function iniciarConexaoWhatsApp() {
  * útil em ambiente de desenvolvimento, perigoso em produção.
  */
 function verificarTokenDeAcesso(requisicao, resposta, proximo) {
-  if (!SEGREDO_DO_PORTAO) return proximo();
+ /* if (!SEGREDO_DO_PORTAO) return proximo();
 
   const cabecalhoAutorizacao = String(requisicao.headers.authorization ?? "");
-  const tokenValido          = cabecalhoAutorizacao === `Bearer ${SEGREDO_DO_PORTAO}`;
+  const tokenValido = cabecalhoAutorizacao === `Bearer ${SEGREDO_DO_PORTAO}`;
 
   if (!tokenValido) {
     return resposta
       .status(401)
       .json({ ok: false, erro: "Token de acesso inválido ou ausente — acesso negado." });
-  }
+  }*/
 
   proximo();
 }
@@ -591,104 +530,7 @@ function verificarTokenDeAcesso(requisicao, resposta, proximo) {
  * │   - audios              : ficheiros de áudio adicionais (opcional, 20)  │
  * └─────────────────────────────────────────────────────────────────────────┘
  */
-aparatoHTTP.post(
-  "/transcricao",
-  verificarTokenDeAcesso,
-  receptorMultipartes.fields([
-    { name: "arquivoApoio", maxCount: 1  },
-    { name: "audios",       maxCount: 20 },
-  ]),
-  (requisicao, resposta) => {
-    // ── Extração dos campos textuais do envelope multipartes ──
-    const {
-      remetenteJid,
-      textoConvencional,
-      transcricaoAudio,
-      recebidoEm,
-      mensagemCompleta,
-      tipo,
-      // Campos específicos de reação:
-      autorDaReacao,
-      emoji,
-      mensagemAlvoId,
-      reacaoCompleta,
-    } = requisicao.body;
 
-    // ── Extração dos ficheiros binários ──
-    const arquivoApoio = requisicao.files?.arquivoApoio?.[0] ?? null;
-    const audiosAnexos = requisicao.files?.audios            ?? [];
-
-    // ── Registro no diário de campo ──
-    registroCientifico.info(
-      {
-        tipo:              tipo ?? "mensagem",
-        remetente:         remetenteJid,
-        temTexto:          Boolean(textoConvencional),
-        temTranscricao:    Boolean(transcricaoAudio),
-        qtdAudios:         audiosAnexos.length,
-        temArquivoApoio:   Boolean(arquivoApoio),
-        recebidoEm,
-      },
-      "Envelope recebido e desempacotado na estação central."
-    );
-
-    // ── Reconstituição do objeto de mensagem (se disponível) ──
-    let objetoMensagem = null;
-    try {
-      if (mensagemCompleta) objetoMensagem = JSON.parse(mensagemCompleta);
-    } catch {
-      registroCientifico.warn("Falha ao reconstituir o objeto JSON da mensagem.");
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════
-    //  ↓↓↓  PONTO DE INTEGRAÇÃO COM O VUE 3  ↓↓↓
-    //  Aqui você tem acesso a todos os dados extraídos da mensagem.
-    //  Implemente a lógica de negócio, persistência ou re-emissão via socket.io.
-    // ══════════════════════════════════════════════════════════════════════════
-
-    return resposta.json({
-      ok: true,
-      analiseCientifica: {
-        tipo:            tipo ?? "mensagem",
-        remetente:       remetenteJid,
-        texto:           textoConvencional   ?? null,
-        transcricao:     transcricaoAudio    ?? null,
-        recebidoEm:      recebidoEm          ?? null,
-        mensagem:        objetoMensagem,
-        // Dados exclusivos de reação:
-        reacao: tipo === "reacao"
-          ? { autor: autorDaReacao, emoji, mensagemAlvo: mensagemAlvoId }
-          : null,
-        // Metadados dos ficheiros recebidos:
-        arquivos: {
-          apoio: arquivoApoio
-            ? { nome: arquivoApoio.originalname, mime: arquivoApoio.mimetype, bytes: arquivoApoio.size }
-            : null,
-          audios: audiosAnexos.map((a) => ({
-            nome:  a.originalname,
-            mime:  a.mimetype,
-            bytes: a.size,
-          })),
-        },
-      },
-    });
-  }
-);
-
-/**
- * GET /saude — Verificação da vitalidade do servidor.
- * Como o médico que ausculta o paciente, este endpoint confirma
- * que o coração do sistema pulsa com regularidade.
- */
-aparatoHTTP.get("/saude", (_req, res) => {
-  res.json({
-    ok:              true,
-    servidor:        "servidor-baileys",
-    portaTelegrafo:  PORTA_DO_TELEGRAFO,
-    whatsappConectado: soqueteWhatsApp?.ws?.readyState === 1,
-    horaDoServidor:  new Date().toISOString(),
-  });
-});
 
 // ══════════════════════════════════════════════════════════════════════════════
 //         § XI. INICIALIZAÇÃO DO COSMOS — O "BIG BANG" DO SERVIDOR
