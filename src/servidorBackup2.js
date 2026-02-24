@@ -16,14 +16,12 @@
 //   Assim como o naturalista municia-se de lente e bisturi antes de adentrar
 //   o laboratório, importamos aqui os módulos indispensáveis à operação.
 // ─────────────────────────────────────────────────────────────────────────────
-import { desafios } from "./models/situacao_problema.js"; // ajuste o path
+import { desafios } from "./situacao_problema.js"; // ajuste o path
 import multer from "multer";
 import dotenv from "dotenv";
-
 dotenv.config({
   path: "/home/bragaus/Documentos/MEUTUTOR/AGENTE_HIBRIDO_BACKEND/.env",
 });
-
 import express from "express";
 import cors from "cors";
 import pino from "pino";
@@ -38,21 +36,19 @@ import makeWASocket, {
   getContentType,
 } from "@whiskeysockets/baileys";
 import { Sequelize, DataTypes, Model } from "sequelize";
-
 // ─────────────────────────────────────────────────────────────────────────────
 // § II. CONSTANTES FUNDAMENTAIS DO SISTEMA — OS AXIOMAS DO EXPERIMENTO
 //   Do mesmo modo que Euclides postulou seus axiomas geométricos, definimos
 //   aqui os parâmetros imutáveis sobre os quais repousa todo o edifício lógico.
 // ─────────────────────────────────────────────────────────────────────────────
-const PORTA_DO_TELEGRAFO = Number(process.env.PORTA_HTTP);
-const DIRETORIO_CREDENCIAIS = "./estado-auth";
-const LIMITE_BYTES_REQUISICAO = Number(2 * 1024 * 1024);
-const SEGREDO_DO_PORTAO = process.env.TOKEN_API;
-const CHAVE_OPENAI = process.env.OPENAI_API_KEY;
+const PORTA_DO_TELEGRAFO     = Number(process.env.PORTA_HTTP);
+const DIRETORIO_CREDENCIAIS  = "./estado-auth";
+const LIMITE_BYTES_REQUISICAO= Number(2 * 1024 * 1024);
+const SEGREDO_DO_PORTAO      = process.env.TOKEN_API;
+const CHAVE_OPENAI           = process.env.OPENAI_API_KEY;
 
 /** URL interna do próprio servidor — ponto de acoplamento entre Baileys e a rota HTTP */
 const URL_ENDPOINT_TRANSCRICAO = `http://localhost:7773/transcricao`;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // § III. INSTANCIAÇÃO DOS INSTRUMENTOS DE MEDIÇÃO E OBSERVAÇÃO
 //   O galvanômetro do cientista é aqui substituído pelo registro estruturado
@@ -83,150 +79,19 @@ aparatoHTTP.use(
 );
 aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
 
-aparatoHTTP.post("/tarefas", (req, res) => {});
+aparatoHTTP.post("/tarefas", (req, res) => {
+    
+    
+    
+});
 
 const sequelize = new Sequelize(process.env.DATABASE_URL);
 
 try {
   await sequelize.authenticate();
-  console.log("Connection has been established successfully.");
+  console.log('Connection has been established successfully.');
 } catch (error) {
-  console.error("Unable to connect to the database:", error);
-}
-
-/**
- * ✦ Função: desembrulharMensagem
- * A Baileys por vezes embala a mensagem como quem embrulha um teorema:
- * ephemeral → viewOnce → (por fim) o conteúdo nu e honesto.
- *
- * Objetivo: alcançar o “núcleo” (o miolo sem adornos).
- */
-function desembrulharMensagem(mensagemBruta) {
-  let mensagemCorrente = mensagemBruta;
-
-  // Evitamos recursão: em vez de subir escadas infinitas, usamos um elevador (while).
-  while (mensagemCorrente) {
-    // 1) Ephemeral: a mensagem “que evapora” (mas a verdade fica).
-    if (mensagemCorrente.ephemeralMessage?.message) {
-      mensagemCorrente = mensagemCorrente.ephemeralMessage.message;
-      continue;
-    }
-
-    // 2) ViewOnce (v1): o bilhete que só permite um olhar — curioso, porém contornável.
-    if (mensagemCorrente.viewOnceMessage?.message) {
-      mensagemCorrente = mensagemCorrente.viewOnceMessage.message;
-      continue;
-    }
-
-    // 3) ViewOnce (v2): o mesmo teatro, com figurino novo.
-    if (mensagemCorrente.viewOnceMessageV2?.message) {
-      mensagemCorrente = mensagemCorrente.viewOnceMessageV2.message;
-      continue;
-    }
-
-    // Se não há mais invólucros, chegamos à “coisa-em-si”.
-    break;
-  }
-
-  return mensagemCorrente;
-}
-
-/**
- * Um sistema que escuta o mundo deve ser avaro: trabalhar apenas quando necessário.
- *
- * Portanto:
- * - filtramos 'type' cedo (curto-circuito)
- * - ignoramos mensagens sem 'message' (ruído do universo)
- * - iteramos com for...of (economia de máquina e de alma)
- */
-function vincularLeitorDeMensagens(soqueteDoWhatsApp) {
-  soqueteDoWhatsApp.ev.on("messages.upsert", async (pacoteDeChegada) => {
-    const { messages: mensagensRecebidas, type: especieDoEvento } = pacoteDeChegada;
-
-    // Filtro precoce: se não é notify/append, não é nosso teatro hoje.
-    if (especieDoEvento !== "notify" && especieDoEvento !== "append") return;
-
-    // Percorremos cada “entrada” do pacote, como quem percorre lemmas de um capítulo.
-    for (const entradaDeMensagem of mensagensRecebidas) {
-      const {
-        message: corpoDaMensagem,
-        key: chaveTelegráfica,
-        pushName: nomeDoRemetente,
-        messageTimestamp: carimboTemporal,
-      } = entradaDeMensagem;
-
-      // Mensagens sem corpo existem (sincronia, recibos, ecos do protocolo).
-      if (!corpoDaMensagem) continue;
-
-      const textoHumano = extrairTexto(corpoDaMensagem);
-
-      // Metadados úteis: o endereço do salão (jid) e o identificador do bilhete (id).
-      const recintoRemoto = chaveTelegráfica?.remoteJid;
-      const identificadorDoBilhete = chaveTelegráfica?.id;
-
-      if (textoHumano) {
-        console.log({
-          recintoRemoto,
-          identificadorDoBilhete,
-          nomeDoRemetente,
-          carimboTemporal,
-          textoHumano,
-        });
-      } else {
-        // Se quiser, aqui é o lugar para tratar mídias com igual rigor:
-        // const mensagemNua = desembrulharMensagem(corpoDaMensagem);
-        // const genero = getContentType(mensagemNua);
-        // ... e então agir conforme o gênero (audioMessage, stickerMessage, etc.).
-      }
-    }
-  });
-}
-
-/**
- * ✦ Função: extrairTexto
- * Um pequeno catálogo de casos — como um naturalista catalogando espécies.
- *
- * Retorna:
- * - string: se houver texto “humano”
- * - null: se o tipo não for textual (ou se não houver texto a extrair)
- */
-function extrairTexto(mensagemBruta) {
-  const mensagemNua = desembrulharMensagem(mensagemBruta);
-  if (!mensagemNua) return null;
-
-  // getContentType revela qual é o “gênero” dominante da mensagem (conversation, imageMessage, etc.)
-  const generoDoConteudo = getContentType(mensagemNua);
-  if (!generoDoConteudo) return null;
-
-  // Acesso direto: nada de varrer chaves como um bibliotecário desesperado.
-  const conteudoPrincipal = mensagemNua[generoDoConteudo];
-
-  // Texto simples: conversa crua, sem ornamentos.
-  if (generoDoConteudo === "conversation") return conteudoPrincipal ?? null;
-
-  // Texto estendido: o texto que vem acompanhado de metadados (menções, etc.)
-  if (generoDoConteudo === "extendedTextMessage") return conteudoPrincipal?.text ?? null;
-
-  // Legendas: imagem/vídeo/documento frequentemente guardam texto em 'caption'.
-  if (
-    generoDoConteudo === "imageMessage" ||
-    generoDoConteudo === "videoMessage" ||
-    generoDoConteudo === "documentMessage"
-  ) {
-    return conteudoPrincipal?.caption ?? null;
-  }
-
-  // Respostas de botões/listas (dependendo de como seu fluxo está montado).
-  if (generoDoConteudo === "buttonsResponseMessage") {
-    return conteudoPrincipal?.selectedButtonId ?? null;
-  }
-
-  if (generoDoConteudo === "listResponseMessage") {
-    return conteudoPrincipal?.singleSelectReply?.selectedRowId ?? null;
-  }
-
-  // Caso geral: não é texto (ou não nos interessa aqui).
-  return null;
+  console.error('Unable to connect to the database:', error);
 }
 
 /**
@@ -278,14 +143,15 @@ function extrairMensagemNuclear(mensagemBaileys) {
   if (!mensagemBaileys?.message) return null;
 
   let nucleo = mensagemBaileys.message;
-  console.log(nucleo);
+  console.log(nucleo)
+
 
   // Desinvoltura do envelope efêmero (mensagens que se autodestroem)
-  if (nucleo.ephemeralMessage?.message) nucleo = nucleo.ephemeralMessage.message;
+  if (nucleo.ephemeralMessage?.message)   nucleo = nucleo.ephemeralMessage.message;
 
   // Desinvoltura dos envelopes de visualização única (primeira e segunda geração)
-  if (nucleo.viewOnceMessage?.message) nucleo = nucleo.viewOnceMessage.message;
-  if (nucleo.viewOnceMessageV2?.message) nucleo = nucleo.viewOnceMessageV2.message;
+  if (nucleo.viewOnceMessage?.message)    nucleo = nucleo.viewOnceMessage.message;
+  if (nucleo.viewOnceMessageV2?.message)  nucleo = nucleo.viewOnceMessageV2.message;
 
   return nucleo;
 }
@@ -302,10 +168,10 @@ function extrairTextoConvencional(mensagemBaileys) {
   if (!conteudo) return "";
 
   return (
-    conteudo.conversation ||
-    conteudo.extendedTextMessage?.text ||
-    conteudo.imageMessage?.caption ||
-    conteudo.videoMessage?.caption ||
+    conteudo.conversation                    ||
+    conteudo.extendedTextMessage?.text       ||
+    conteudo.imageMessage?.caption           ||
+    conteudo.videoMessage?.caption           ||
     ""
   );
 }
@@ -319,12 +185,10 @@ function extrairTextoConvencional(mensagemBaileys) {
  */
 async function extrairBufferDeAudio(mensagemBaileys) {
   const nucleo = extrairMensagemNuclear(mensagemBaileys);
-  console.log("nucleo")
-  console.log(nucleo)
   if (!nucleo) return null;
-  console.log("getContenType")
+
   const tipoDaEntidade = getContentType(nucleo);
-  console.log(getContentType)
+
   // ── Caso I: Nota de voz ou arquivo de áudio nativo do WhatsApp ──
   if (tipoDaEntidade === "audioMessage") {
     const entidadeAudio = nucleo.audioMessage;
@@ -332,11 +196,11 @@ async function extrairBufferDeAudio(mensagemBaileys) {
     const corpo = await fluxoParaBuffer(corrente);
 
     return {
-      buffer: corpo,
-      mimeType: entidadeAudio.mimetype ?? "audio/ogg; codecs=opus",
-      fileName: "audio.ogg",
-      segundos: entidadeAudio.seconds,
-      notaDeVoz: entidadeAudio.ptt ?? false,
+      buffer:     corpo,
+      mimeType:   entidadeAudio.mimetype ?? "audio/ogg; codecs=opus",
+      fileName:   "audio.ogg",
+      segundos:   entidadeAudio.seconds,
+      notaDeVoz:  entidadeAudio.ptt ?? false,
     };
   }
 
@@ -350,9 +214,9 @@ async function extrairBufferDeAudio(mensagemBaileys) {
     const corpo = await fluxoParaBuffer(corrente);
 
     return {
-      buffer: corpo,
-      mimeType: mimeDoDocumento,
-      fileName: documento.fileName ?? "audio.bin",
+      buffer:    corpo,
+      mimeType:  mimeDoDocumento,
+      fileName:  documento.fileName ?? "audio.bin",
     };
   }
 
@@ -373,15 +237,15 @@ async function transcreverAudioViaOpenAI({ buffer, fileName, idioma = "en" }) {
   if (buffer.length > LIMITE_MAXIMO) {
     throw new Error(
       `Corpus sonoro excessivo: ${(buffer.length / 1_048_576).toFixed(2)} MB. ` +
-        `O limite da câmara de transcrição é de 25 MB.`
+      `O limite da câmara de transcrição é de 25 MB.`
     );
   }
 
   const arquivoSubmetido = await toFile(buffer, fileName ?? "audio.ogg");
 
   const resultado = await clienteOpenAI.audio.transcriptions.create({
-    model: "gpt-4o-transcribe",
-    file: arquivoSubmetido,
+    model:    "gpt-4o-transcribe",
+    file:     arquivoSubmetido,
     language: idioma,
   });
 
@@ -398,8 +262,8 @@ async function transcreverAudioViaOpenAI({ buffer, fileName, idioma = "en" }) {
  * @returns {number} Milissegundos de espera recomendados
  */
 function calcularRetrocessoExponencial(tentativa, tetoMs = 30_000) {
-  const componente_base = Math.min(tetoMs, 500 * 2 ** tentativa);
-  const perturbacao = Math.floor(Math.random() * 250);
+  const componente_base  = Math.min(tetoMs, 500 * 2 ** tentativa);
+  const perturbacao      = Math.floor(Math.random() * 250);
   return componente_base + perturbacao;
 }
 
@@ -421,22 +285,22 @@ function calcularRetrocessoExponencial(tentativa, tetoMs = 30_000) {
 async function encaminharMensagemParaEndpoint(mensagemBaileys, transcricao = null) {
   const identificadorRemoto = mensagemBaileys?.key?.remoteJid ?? "desconhecido";
 
-  console.log("================================== function do post");
-  console.log(mensagemBaileys);
-  console.log("====================================");
-  console.log(transcricao);
+  console.log("================================== function do post")
+  console.log(mensagemBaileys)
+  console.log("====================================")
+  console.log(transcricao)
 
   try {
     const respostaTelegrafo = await fetch(process.env.NN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        remetenteJid: identificadorRemoto,
-        transcricaoAudio: transcricao ?? "",
-      }),
+       method: "POST",
+       headers: { "Content-Type": "application/json" },
+       body: {
+         remetenteJid: identificadorRemoto,
+         transcricaoAudio: transcricao ?? "",
+       }),
     });
 
-    console.log(respostaTelegrafo);
+    console.log(respostaTelegrafo)
 
     if (!respostaTelegrafo.ok) {
       registroCientifico.warn(
@@ -484,15 +348,15 @@ async function iniciarConexaoWhatsApp() {
   );
 
   soqueteWhatsApp = makeWASocket({
-    version: versaoProtocolo,
-    logger: registroCientifico,
+    version:             versaoProtocolo,
+    logger:              registroCientifico,
     auth: {
       creds: estadoDaSessao.creds,
-      keys: makeCacheableSignalKeyStore(estadoDaSessao.keys, registroCientifico),
+      keys:  makeCacheableSignalKeyStore(estadoDaSessao.keys, registroCientifico),
     },
-    emitOwnEvents: false, // Ignoramos nossos próprios telegrama — evitamos o paradoxo
+    emitOwnEvents:       false, // Ignoramos nossos próprios telegrama — evitamos o paradoxo
     markOnlineOnConnect: false, // Não perturbamos a presença social da conta
-    syncFullHistory: false, // Apenas o presente nos interessa
+    syncFullHistory:     false, // Apenas o presente nos interessa
   });
 
   // ── Persistência das Credenciais: A Memória da Máquina ──
@@ -522,7 +386,7 @@ async function iniciarConexaoWhatsApp() {
 
     if (connection === "close") {
       const codigoDeEncerramento = lastDisconnect?.error?.output?.statusCode;
-      const sessaoDeslogada = codigoDeEncerramento === DisconnectReason.loggedOut;
+      const sessaoDeslogada      = codigoDeEncerramento === DisconnectReason.loggedOut;
 
       registroCientifico.warn(
         { codigoDeEncerramento, sessaoDeslogada },
@@ -557,97 +421,101 @@ async function iniciarConexaoWhatsApp() {
 
   // ────────────────────────────────────────────────────────────────────────────
   // EVENTO I: messages.upsert — A Chegada do Telegrama
+  //
+  // Cada mensagem recebida é tratada como um novo espécime de laboratório:
+  // identificamos sua natureza, extraímos seu conteúdo e o encaminhamos
+  // ao endpoint de análise para processamento posterior.
   // ────────────────────────────────────────────────────────────────────────────
-  soqueteWhatsApp.ev.on("messages.upsert", async (pacote) => {
+  soqueteWhatsApp.ev.on("messages.upsert", async (eventoDeChegada) => {
     // Aceitamos apenas notificações em tempo real e appendagens de histórico
-    
-    const { messages: mensagens, type: especie } = pacote;
+    if (eventoDeChegada.type !== "notify" && eventoDeChegada.type !== "append") return;
+      for (const mensagemRecebida of eventoDeChegada.messages ?? []) {
+i         
 
-    // Trabalhamos cedo: o mundo é barulhento, a mente deve ser econômica.
-    if (especie !== "notify" && especie !== "append") return;
-      
-      console.log(mensagens)
+          console.log(mensagemRecebida)
+          //if (deveDescartarMensagem(mensagemRecebida)) continue;
 
-      for (const entrada of mensagens) {
-
-        const mensagemRemota  = entrada.message.conversation
-        const remoteJid = entrada.key.remoteJid
-
-        /* telegrafo de troca de cartas  */
-        if (entrada.message?.conversation) {
-         
-            /* Despachar os informes telegrafados ao N8N  */
-            const telegrama_do_N8N  = await fetch(process.env.NN_URL, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json",
-              },
-              body: JSON.stringify({ mensagemRemota, remoteJid }),
-            });
-        } 
-      }
-      //const textoExtraido = extrairTextoConvencional(mensagemRecebida)
-      // ── Tentativa de extração e transcrição do áudio ──
-      //var transcricaoFonetica = null;
-/*
-      try {
-        //const corpusSonoro = await extrairBufferDeAudio(mensagemRecebida);
-          console.log("mensagemRecebida.message.conversation")
-          console.log(mensagemRecebida.message.conversation)
-
-          if (textoExtraido) {
-            console.log("dentro terceiro if")
-            const respostaPSQL = await fetch(process.env.NN_URL, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json",
-              },
-              body: JSON.stringify(mensagemRecebida.message),
-            });
-          }
-
-          /*const respostaTelegrafo = await fetch("http://localhost:7773/tarefas", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({
-              remetenteJid: "identificadorRemoto",
-              transcricaoAudio: "transcricao",
-            }),
-          });
-
-          transcricaoFonetica = await transcreverAudioViaOpenAI({
-            buffer:   corpusSonoro.buffer,
-            fileName: corpusSonoro.fileName,
-            idioma:   "en",
-          });
-
-          registroCientifico.info(
-            { identificadorRemoto, transcricao: transcricaoFonetica },
-            "Transcrição concluída com êxito — o fenômeno acústico foi convertido em grafemas."
-          );
+          const identificadorRemoto = mensagemRecebida?.key?.remoteJid ?? "desconhecido";
           
+          registroCientifico.info(
+            { identificadorRemoto },
+            "Novo espécime recebido — iniciando o processo de análise."
+          );
+
+          // ── Tentativa de extração e transcrição do áudio ──
+          var  transcricaoFonetica = null;
+
+          try {
+            const corpusSonoro = await extrairBufferDeAudio(mensagemRecebida);
+
+            if (corpusSonoro) {
+              registroCientifico.info(
+                { identificadorRemoto, bytes: corpusSonoro.buffer.length },
+                "Corpus sonoro detectado — submetendo à câmara de transcrição fonética."
+              );
+
+        if (mensagemRecebida.message?.conversation ||
+        mensagemRecebida.message?.extendedTextMessage?.text) {
+              const respostaPSQL = await fetch(process.env.NN_URL, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Accept": "application/json",
+                },
+                body: JSON.stringify(mensagemRecebida.message),
+              });
+        }
+    
+
+      /*const respostaTelegrafo = await fetch("http://localhost:7773/tarefas", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        remetenteJid: "identificadorRemoto",
+        transcricaoAudio: "transcricao",
+      }),
+    });
+
+              transcricaoFonetica = await transcreverAudioViaOpenAI({
+                buffer:   corpusSonoro.buffer,
+                fileName: corpusSonoro.fileName,
+                idioma:   "en",
+              });
+              
+              registroCientifico.info(
+                { identificadorRemoto, transcricao: transcricaoFonetica },
+                "Transcrição concluída com êxito — o fenômeno acústico foi convertido em grafemas."
+              );
+
+
+  */
+
+             
       } catch (erroTranscricao) {
         registroCientifico.warn(
           { erroTranscricao, identificadorRemoto },
           "Falha na transcrição — prosseguiremos sem ela."
         );
       }
-
       // ── Encaminhamento ao endpoint interno ──
       // await encaminharMensagemParaEndpoint(mensagemRecebida, transcricaoFonetica);
-    }*/
+    }
   });
 
   // ────────────────────────────────────────────────────────────────────────────
   // EVENTO II: messages.reaction — A Reação ao Telegrama
+  //
+  // As reações (emojis) constituem um fenômeno paralelo às mensagens textuais,
+  // análogo às anotações marginais que os estudiosos apõem aos manuscritos.
+  // Observamo-las separadamente para preservar a integridade taxonômica.
   // ────────────────────────────────────────────────────────────────────────────
   return soqueteWhatsApp;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 //        § IX. MIDDLEWARE DE AUTENTICAÇÃO — O GUARDA DO PORTÃO
+//   Apenas portadores do token secreto poderão fazer uso dos recursos
+//   do servidor. A ciência exige rigor tanto na metodologia quanto no acesso.
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -656,7 +524,7 @@ async function iniciarConexaoWhatsApp() {
  * útil em ambiente de desenvolvimento, perigoso em produção.
  */
 function verificarTokenDeAcesso(requisicao, resposta, proximo) {
-  /* if (!SEGREDO_DO_PORTAO) return proximo();
+ /* if (!SEGREDO_DO_PORTAO) return proximo();
 
   const cabecalhoAutorizacao = String(requisicao.headers.authorization ?? "");
   const tokenValido = cabecalhoAutorizacao === `Bearer ${SEGREDO_DO_PORTAO}`;
@@ -694,8 +562,11 @@ function verificarTokenDeAcesso(requisicao, resposta, proximo) {
  * └─────────────────────────────────────────────────────────────────────────┘
  */
 
+
 // ══════════════════════════════════════════════════════════════════════════════
 //         § XI. INICIALIZAÇÃO DO COSMOS — O "BIG BANG" DO SERVIDOR
+//   Assim como o universo emergiu de um ponto singular de energia concentrada,
+//   nosso servidor inicia-se a partir deste bloco assíncrono fundamental.
 // ══════════════════════════════════════════════════════════════════════════════
 
 (async () => {
@@ -718,7 +589,9 @@ function verificarTokenDeAcesso(requisicao, resposta, proximo) {
   // Passo II: Estabelecemos a conexão com o WhatsApp
   await iniciarConexaoWhatsApp();
 
-  registroCientifico.info("Todos os subsistemas operacionais — o experimento está em curso.");
+  registroCientifico.info(
+    "Todos os subsistemas operacionais — o experimento está em curso."
+  );
 })().catch((erroFatal) => {
   registroCientifico.error(
     { erroFatal },
