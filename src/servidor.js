@@ -83,7 +83,10 @@ aparatoHTTP.use(
 );
 aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
 
-aparatoHTTP.post("/tarefas", (req, res) => {});
+aparatoHTTP.post("/tarefas", (req, res) => {
+
+
+});
 
 const sequelize = new Sequelize(process.env.DATABASE_URL);
 
