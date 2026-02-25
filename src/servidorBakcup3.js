@@ -71,6 +71,28 @@ const clienteOpenAI = new OpenAI({ apiKey: CHAVE_OPENAI });
 //   representa o canal de comunicação partilhado entre todos os subsistemas,
 //   análoga ao éter luminífero que permeia todo o espaço observável.
 // ─────────────────────────────────────────────────────────────────────────────
+const aparatoHTTP = express();
+
+aparatoHTTP.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
+
+aparatoHTTP.post("/audiodoaluno", (req, res) => {
+
+  console.log(req.body)
+
+});
+
+aparatoHTTP.post("/tarefas", (req, res) => {
+
+
+});
 
 const sequelize = new Sequelize(process.env.DATABASE_URL);
 
@@ -574,6 +596,57 @@ async function iniciarConexaoWhatsApp() {
             });
         } 
       }
+      //const textoExtraido = extrairTextoConvencional(mensagemRecebida)
+      // ── Tentativa de extração e transcrição do áudio ──
+      //var transcricaoFonetica = null;
+/*
+      try {
+        //const corpusSonoro = await extrairBufferDeAudio(mensagemRecebida);
+          console.log("mensagemRecebida.message.conversation")
+          console.log(mensagemRecebida.message.conversation)
+
+          if (textoExtraido) {
+            console.log("dentro terceiro if")
+            const respostaPSQL = await fetch(process.env.NN_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify(mensagemRecebida.message),
+            });
+          }
+
+          /*const respostaTelegrafo = await fetch("http://localhost:7773/tarefas", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({
+              remetenteJid: "identificadorRemoto",
+              transcricaoAudio: "transcricao",
+            }),
+          });
+
+          transcricaoFonetica = await transcreverAudioViaOpenAI({
+            buffer:   corpusSonoro.buffer,
+            fileName: corpusSonoro.fileName,
+            idioma:   "en",
+          });
+
+          registroCientifico.info(
+            { identificadorRemoto, transcricao: transcricaoFonetica },
+            "Transcrição concluída com êxito — o fenômeno acústico foi convertido em grafemas."
+          );
+          
+      } catch (erroTranscricao) {
+        registroCientifico.warn(
+          { erroTranscricao, identificadorRemoto },
+          "Falha na transcrição — prosseguiremos sem ela."
+        );
+      }
+
+      // ── Encaminhamento ao endpoint interno ──
+      // await encaminharMensagemParaEndpoint(mensagemRecebida, transcricaoFonetica);
+    }*/
   });
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -582,51 +655,79 @@ async function iniciarConexaoWhatsApp() {
   return soqueteWhatsApp;
 }
 
-async function iniciarHTTP() {
+// ══════════════════════════════════════════════════════════════════════════════
+//        § IX. MIDDLEWARE DE AUTENTICAÇÃO — O GUARDA DO PORTÃO
+// ══════════════════════════════════════════════════════════════════════════════
 
-      const aparatoHTTP = express();
+/**
+ * Intercepta as requisições e verifica a posse do token de autenticação.
+ * Se o SEGREDO_DO_PORTAO estiver vazio, o acesso é liberado a todos —
+ * útil em ambiente de desenvolvimento, perigoso em produção.
+ */
+function verificarTokenDeAcesso(requisicao, resposta, proximo) {
+  /* if (!SEGREDO_DO_PORTAO) return proximo();
 
-      /* app.use(criarLimitadorRequisicoes()); 
-       * Pesquisa como fazer 
-       * */
+  const cabecalhoAutorizacao = String(requisicao.headers.authorization ?? "");
+  const tokenValido = cabecalhoAutorizacao === `Bearer ${SEGREDO_DO_PORTAO}`;
 
-      app.use(express.json({ limit: LIMITE_BYTES_HTTP }));
-      app.use(express.urlencoded({ extended: true, limit: LIMITE_BYTES_HTTP }));
+  if (!tokenValido) {
+    return resposta
+      .status(401)
+      .json({ ok: false, erro: "Token de acesso inválido ou ausente — acesso negado." });
+  }*/
 
-      aparatoHTTP.use(
-        cors({
-          origin: true,
-          credentials: true,
-          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-          allowedHeaders: ["Content-Type", "Authorization"],
-        });
-      );
-      aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
+  proximo();
+}
 
-      aparatoHTTP.post("/audiodoaluno", (req, res) => {
+// ══════════════════════════════════════════════════════════════════════════════
+//      § X. ROTAS HTTP — AS ESTAÇÕES RECEPTORAS DO SISTEMA TELEGRÁFICO
+// ══════════════════════════════════════════════════════════════════════════════
 
-        console.log(req.body)
+/**
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │  POST /transcricao                                                      │
+ * │                                                                         │
+ * │  Estação central de recepção de mensagens e transcrições.               │
+ * │  Aceita um envelope multipartes contendo campos textuais e,             │
+ * │  opcionalmente, arquivos binários (áudios e documentos de apoio).       │
+ * │                                                                         │
+ * │  Campos esperados no FormData:                                          │
+ * │   - remetenteJid        : identificador JID do remetente                │
+ * │   - textoConvencional   : corpo textual da mensagem                     │
+ * │   - transcricaoAudio    : resultado da transcrição fonética             │
+ * │   - recebidoEm          : carimbo temporal ISO 8601                     │
+ * │   - mensagemCompleta    : JSON serializado do objeto bruto              │
+ * │   - tipo                : "mensagem" | "reacao"                         │
+ * │   - arquivoApoio        : ficheiro auxiliar (opcional, 1 ficheiro)      │
+ * │   - audios              : ficheiros de áudio adicionais (opcional, 20)  │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ */
 
-      });
-
-        aparatoHTTP.listen(PORTA_HTTP, () => {
-          registro.info({ PORTA_HTTP }, 
-          "Telegrafo de cartas navegando no grande Éter");
-        });
- }
-
+// ══════════════════════════════════════════════════════════════════════════════
+//         § XI. INICIALIZAÇÃO DO COSMOS — O "BIG BANG" DO SERVIDOR
+// ══════════════════════════════════════════════════════════════════════════════
 
 (async () => {
   registroCientifico.info("══════════════════════════════════════════════════════");
-  registroCientifico.info("  Ligando Servidor Telegráfico BAILEYS");
+  registroCientifico.info("  Servidor Telegráfico WhatsApp — Inicialização       ");
   registroCientifico.info("══════════════════════════════════════════════════════");
+
+  // Passo I: Erguemos o servidor HTTP antes de conectar ao WhatsApp,
+  //          pois ele precisa estar pronto para receber os primeiros telegramas
+  await new Promise((resolver) => {
+    aparatoHTTP.listen(PORTA_DO_TELEGRAFO, () => {
+      registroCientifico.info(
+        { porta: PORTA_DO_TELEGRAFO },
+        "Servidor HTTP erguido — as portas do laboratório estão abertas."
+      );
+      resolver();
+    });
+  });
 
   // Passo II: Estabelecemos a conexão com o WhatsApp
   await iniciarConexaoWhatsApp();
-  await iniciarHTTP();
 
   registroCientifico.info("Todos os subsistemas operacionais — o experimento está em curso.");
-
 })().catch((erroFatal) => {
   registroCientifico.error(
     { erroFatal },
@@ -634,4 +735,3 @@ async function iniciarHTTP() {
   );
   process.exit(1);
 });
-
