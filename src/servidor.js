@@ -83,6 +83,12 @@ aparatoHTTP.use(
 );
 aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
 
+aparatoHTTP.post("/audiodoaluno", (req, res) => {
+
+  console.log(req.body)
+
+});
+
 aparatoHTTP.post("/tarefas", (req, res) => {
 
 
