@@ -298,9 +298,11 @@ async function iniciarConexaoWhatsApp() {
           },
           body: JSON.stringify({ mensagemRemota, remoteJid }),
 
-          soqueteWhatsApp.sendMessage(remoteJid, { text: "hello" })
 
         });
+        
+        soqueteWhatsApp.sendMessage(remoteJid, { text: "hello" })
+
       }
     }
   });
