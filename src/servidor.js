@@ -343,7 +343,7 @@ async function iniciarHTTP() {
     return res.status(200).json({ ok: true });
   });
 
-  aparatoHTTP.listen(PORTA_DO_TELEGRAFO, () => {
+  aparatoHTTP.listen(7773, '127.0.0.1', () => {
     registroCientifico.info(
       { PORTA_DO_TELEGRAFO },
       "Telegrafo de cartas navegando no grande Éter"
