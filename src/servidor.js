@@ -19,11 +19,6 @@
 import { desafios } from "./models/situacao_problema.js"; // ajuste o path
 import multer from "multer";
 import dotenv from "dotenv";
-
-dotenv.config({
-  path: "/opt/baileys-api/.env",
-});
-
 import express from "express";
 import cors from "cors";
 import pino from "pino";
