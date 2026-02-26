@@ -60,11 +60,6 @@ const registroCientifico = pino({
 });
 
 const clienteOpenAI = new OpenAI({ apiKey: CHAVE_OPENAI });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// § IV. APPARATUS HTTP — O TELÉGRAFO EM SI MESMO
-// ─────────────────────────────────────────────────────────────────────────────
-
 const sequelize = new Sequelize(process.env.DATABASE_URL);
 
 try {
@@ -74,105 +69,9 @@ try {
   console.error("Unable to connect to the database:", error);
 }
 
-function desembrulharMensagem(mensagemBruta) {
-  let mensagemCorrente = mensagemBruta;
-
-  while (mensagemCorrente) {
-    if (mensagemCorrente.ephemeralMessage?.message) {
-      mensagemCorrente = mensagemCorrente.ephemeralMessage.message;
-      continue;
-    }
-
-    if (mensagemCorrente.viewOnceMessage?.message) {
-      mensagemCorrente = mensagemCorrente.viewOnceMessage.message;
-      continue;
-    }
-
-    if (mensagemCorrente.viewOnceMessageV2?.message) {
-      mensagemCorrente = mensagemCorrente.viewOnceMessageV2.message;
-      continue;
-    }
-
-    break;
-  }
-
-  return mensagemCorrente;
-}
-
-function vincularLeitorDeMensagens(soqueteDoWhatsApp) {
-  soqueteDoWhatsApp.ev.on("messages.upsert", async (pacoteDeChegada) => {
-    const { messages: mensagensRecebidas, type: especieDoEvento } = pacoteDeChegada;
-
-    if (especieDoEvento !== "notify" && especieDoEvento !== "append") return;
-
-    for (const entradaDeMensagem of mensagensRecebidas) {
-      const {
-        message: corpoDaMensagem,
-        key: chaveTelegráfica,
-        pushName: nomeDoRemetente,
-        messageTimestamp: carimboTemporal,
-      } = entradaDeMensagem;
-
-      if (!corpoDaMensagem) continue;
-
-      const textoHumano = extrairTexto(corpoDaMensagem);
-
-      const recintoRemoto = chaveTelegráfica?.remoteJid;
-      const identificadorDoBilhete = chaveTelegráfica?.id;
-
-      if (textoHumano) {
-        console.log({
-          recintoRemoto,
-          identificadorDoBilhete,
-          nomeDoRemetente,
-          carimboTemporal,
-          textoHumano,
-        });
-      } else {
-        // ...
-      }
-    }
-  });
-}
-
-function extrairTexto(mensagemBruta) {
-  const mensagemNua = desembrulharMensagem(mensagemBruta);
-  if (!mensagemNua) return null;
-
-  const generoDoConteudo = getContentType(mensagemNua);
-  if (!generoDoConteudo) return null;
-
-  const conteudoPrincipal = mensagemNua[generoDoConteudo];
-
-  if (generoDoConteudo === "conversation") return conteudoPrincipal ?? null;
-  if (generoDoConteudo === "extendedTextMessage") return conteudoPrincipal?.text ?? null;
-
-  if (
-    generoDoConteudo === "imageMessage" ||
-    generoDoConteudo === "videoMessage" ||
-    generoDoConteudo === "documentMessage"
-  ) {
-    return conteudoPrincipal?.caption ?? null;
-  }
-
-  if (generoDoConteudo === "buttonsResponseMessage") {
-    return conteudoPrincipal?.selectedButtonId ?? null;
-  }
-
-  if (generoDoConteudo === "listResponseMessage") {
-    return conteudoPrincipal?.singleSelectReply?.selectedRowId ?? null;
-  }
-
-  return null;
-}
-
-const receptorMultipartes = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
-});
-
 let soqueteWhatsApp = null;
 
+/* aparato cirurgico de textos  */
 async function fluxoParaBuffer(fluxo) {
   const fragmentos = [];
   for await (const fragmento of fluxo) fragmentos.push(fragmento);
@@ -192,23 +91,8 @@ function extrairMensagemNuclear(mensagemBaileys) {
   return nucleo;
 }
 
-function extrairTextoConvencional(mensagemBaileys) {
-  const conteudo = mensagemBaileys?.message;
-  if (!conteudo) return "";
-
-  return (
-    conteudo.conversation ||
-    conteudo.extendedTextMessage?.text ||
-    conteudo.imageMessage?.caption ||
-    conteudo.videoMessage?.caption ||
-    ""
-  );
-}
-
 async function extrairBufferDeAudio(mensagemBaileys) {
   const nucleo = extrairMensagemNuclear(mensagemBaileys);
-  console.log("nucleo");
-  console.log(nucleo);
   if (!nucleo) return null;
 
   console.log("getContenType");
@@ -315,9 +199,12 @@ async function encaminharMensagemParaEndpoint(mensagemBaileys, transcricao = nul
   }
 }
 
+var remoteJid = ""
+
 async function iniciarConexaoWhatsApp() {
-  const { state: estadoDaSessao, saveCreds: preservarCredenciais } =
-    await useMultiFileAuthState(DIRETORIO_CREDENCIAIS);
+   
+   const { state: estadoDaSessao, saveCreds: preservarCredenciais } =
+   await useMultiFileAuthState(DIRETORIO_CREDENCIAIS);
 
   const { version: versaoProtocolo } = await fetchLatestBaileysVersion();
 
@@ -405,7 +292,7 @@ async function iniciarConexaoWhatsApp() {
 
     for (const entrada of mensagens) {
       const mensagemRemota = entrada?.message?.conversation;
-      const remoteJid = entrada?.key?.remoteJid;
+      remoteJid = entrada?.key?.remoteJid;
 
       if (entrada?.message?.conversation) {
         const telegrama_do_N8N = await fetch(process.env.NN_URL, {
@@ -422,6 +309,11 @@ async function iniciarConexaoWhatsApp() {
 
   return soqueteWhatsApp;
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// § IV. APPARATUS HTTP §
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function iniciarHTTP() {
   const aparatoHTTP = express();
@@ -444,8 +336,10 @@ async function iniciarHTTP() {
 
   aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
 
-  aparatoHTTP.post("/audiodoaluno", (req, res) => {
-    console.log(req.body);
+  aparatoHTTP.post("/texto", (req, res) => {
+     
+    soqueteWhatsApp.sendMessage(remoteJid, { text: "hello" })
+
     return res.status(200).json({ ok: true });
   });
 
