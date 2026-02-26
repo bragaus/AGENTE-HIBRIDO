@@ -4,7 +4,9 @@
   "type": "module",
   "main": "src/servidor.js",
   "scripts": {
-    "start": "node src/servidor.js"
+    "start": "node src/servidor.js",
+    "local": "/home/bragaus/Documentos/MEUTUTOR/AGENTE_HIBRIDO_BACKEND/.env node src/servidor.js",
+    "servidor": "/opt/baileys-api/.env node src/servidor.js "
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
