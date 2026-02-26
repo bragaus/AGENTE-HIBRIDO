@@ -297,6 +297,9 @@ async function iniciarConexaoWhatsApp() {
             Accept: "application/json",
           },
           body: JSON.stringify({ mensagemRemota, remoteJid }),
+
+          soqueteWhatsApp.sendMessage(remoteJid, { text: "hello" })
+
         });
       }
     }
@@ -333,7 +336,6 @@ async function iniciarHTTP() {
 
   aparatoHTTP.post("/texto", (req, res) => {
      
-    soqueteWhatsApp.sendMessage(remoteJid, { text: "hello" })
 
     return res.status(200).json({ ok: true });
   });
