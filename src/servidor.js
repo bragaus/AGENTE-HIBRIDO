@@ -21,7 +21,7 @@ import multer from "multer";
 import dotenv from "dotenv";
 
 dotenv.config({
-  path: "/home/bragaus/Documentos/MEUTUTOR/AGENTE_HIBRIDO_BACKEND/.env",
+  path: "/opt/baileys-api/.env",
 });
 
 import express from "express";
@@ -343,7 +343,7 @@ async function iniciarHTTP() {
     return res.status(200).json({ ok: true });
   });
 
-  aparatoHTTP.listen(7773, '127.0.0.1', () => {
+  aparatoHTTP.listen(PORTA_DO_TELEGRAFO, () => {
     registroCientifico.info(
       { PORTA_DO_TELEGRAFO },
       "Telegrafo de cartas navegando no grande Éter"

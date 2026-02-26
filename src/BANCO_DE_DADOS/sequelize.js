@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-dotenv.config({ path: "/home/bragaus/Documentos/MEUTUTOR/AGENTE_HIBRIDO_BACKEND/.env" });
+dotenv.config({ path: "/opt/baileys-api/.env" });
 import { Sequelize } from "sequelize";
 console.log(process.env.DATABASE_URL)
 export const sequelize = new Sequelize(process.env.DATABASE_URL, {
