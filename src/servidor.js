@@ -33,7 +33,7 @@ import makeWASocket, {
   getContentType,
 } from "@whiskeysockets/baileys";
 import { Sequelize, DataTypes, Model } from "sequelize";
-
+//import aparatoTelegrafico from "./baileys.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // § II. CONSTANTES FUNDAMENTAIS DO SISTEMA — OS AXIOMAS DO EXPERIMENTO
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,11 +156,6 @@ function calcularRetrocessoExponencial(tentativa, tetoMs = 30_000) {
 async function encaminharMensagemParaEndpoint(mensagemBaileys, transcricao = null) {
   const identificadorRemoto = mensagemBaileys?.key?.remoteJid ?? "desconhecido";
 
-  console.log("================================== function do post");
-  console.log(mensagemBaileys);
-  console.log("====================================");
-  console.log(transcricao);
-
   try {
     const respostaTelegrafo = await fetch(process.env.NN_URL, {
       method: "POST",
@@ -170,8 +165,6 @@ async function encaminharMensagemParaEndpoint(mensagemBaileys, transcricao = nul
         transcricaoAudio: transcricao ?? "",
       }),
     });
-
-    console.log(respostaTelegrafo);
 
     if (!respostaTelegrafo.ok) {
       registroCientifico.warn(
@@ -297,14 +290,44 @@ async function iniciarConexaoWhatsApp() {
             Accept: "application/json",
           },
           body: JSON.stringify({ mensagemRemota, remoteJid }),
-
-
         });
-        
-        soqueteWhatsApp.sendMessage(remoteJid, { text: "hello" })
+       
 
       }
-    }
+
+        if (entrada?.message?.audioMessage) {
+
+         const audioMsg = entrada.message.audioMessage;
+         if (!audioMsg) throw new Error("Sem audioMessage na mensagem.");
+         const stream = await downloadContentFromMessage(audioMsg, "audio");
+         const oggBuffer = await fluxoParaBuffer(stream);
+
+                const file = await toFile(oggBuffer, "audio.ogg", {
+                 type: "audio/ogg",
+                });
+
+          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+          const transcricao = await client.audio.transcriptions.create({
+            file,
+            model: "gpt-4o-mini-transcribe",
+            language: "en",          // opcional (ISO-639-1)
+            //response_format: "json", // opcional
+          });
+
+        const telegrama_do_N8N = await fetch(process.env.NN_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ transcricao }),
+        });
+        }
+     }
+
+
+
   });
 
   return soqueteWhatsApp;
@@ -336,10 +359,17 @@ async function iniciarHTTP() {
 
   aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
 
-  aparatoHTTP.post("/texto", (req, res) => {
-     
+  aparatoHTTP.post("/texto", async (req, res) => {
+      soqueteWhatsApp.sendMessage(req.body.jidDestino, { text: req.body.texto })
+      console.log(req.body.jidDestino)
+      console.log(req.body.texto)
+      return res.status(200).json({ ok: true });
+  });
 
-    return res.status(200).json({ ok: true });
+  aparatoHTTP.post("/midia", async (req, res) => {
+      
+    
+
   });
 
   aparatoHTTP.listen(PORTA_DO_TELEGRAFO, () => {
@@ -355,8 +385,8 @@ async function iniciarHTTP() {
   registroCientifico.info("  Ligando Servidor Telegráfico BAILEYS");
   registroCientifico.info("══════════════════════════════════════════════════════");
 
-  await iniciarConexaoWhatsApp();
   await iniciarHTTP();
+  await iniciarConexaoWhatsApp();
 
   registroCientifico.info("Todos os subsistemas operacionais — o experimento está em curso.");
 })().catch((erroFatal) => {
