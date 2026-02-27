@@ -282,12 +282,15 @@ async function iniciarConexaoWhatsApp() {
       const texto = entrada?.message?.conversation;
       remoteJid = entrada?.key?.remoteJid;
 
+      console.log(texto)
+      console.logrem(remoteJid)
+
       if (entrada?.message?.conversation) {
-        const telegrama_do_N8N = await fetch(process.env.NN_URL, {
+          const telegrama_do_N8N = await fetch(process.env.NN_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Accept: "application/json",
+            "Accept": "application/json",
           },
           body: JSON.stringify({ remoteJid, texto  }),
         });
@@ -357,9 +360,10 @@ async function iniciarHTTP() {
 
   aparatoHTTP.post("/texto", async (req, res) => {
     const remoteJid = req.body.remoteJid 
-    soqueteWhatsApp.sendMessage(remoteJid, { texto: req.body.texto });
+    const texto = req.body.texto
+    soqueteWhatsApp.sendMessage(remoteJid, { text: texto });
 
-    console.log(req.body.jidDestino);
+    console.log(req.body.remoteJid);
     console.log(req.body.texto);
     return res.status(200).json({ ok: true });
   });
