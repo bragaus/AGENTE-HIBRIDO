@@ -279,7 +279,7 @@ async function iniciarConexaoWhatsApp() {
     console.log(mensagens);
 
     for (const entrada of mensagens) {
-      const mensagemRemota = entrada?.message?.conversation;
+      const texto = entrada?.message?.conversation;
       remoteJid = entrada?.key?.remoteJid;
 
       if (entrada?.message?.conversation) {
@@ -289,7 +289,7 @@ async function iniciarConexaoWhatsApp() {
             "Content-Type": "application/json",
             Accept: "application/json",
           },
-          body: JSON.stringify({ mensagemRemota, remoteJid }),
+          body: JSON.stringify({ remoteJid, texto  }),
         });
       }
 
@@ -305,12 +305,14 @@ async function iniciarConexaoWhatsApp() {
 
         const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-        const texto = await client.audio.transcriptions.create({
+        const transcricao = await client.audio.transcriptions.create({
           file,
           model: "gpt-4o-mini-transcribe",
           language: "en", // opcional (ISO-639-1)
           //response_format: "json", // opcional
         });
+
+        const texto = transcricao.text
 
         const remoteJid = entrada?.key?.remoteJid;
         const telegrama_do_N8N = await fetch(process.env.NN_URL, {
