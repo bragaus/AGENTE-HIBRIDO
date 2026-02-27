@@ -297,32 +297,33 @@ async function iniciarConexaoWhatsApp() {
 
         if (entrada?.message?.audioMessage) {
 
-         const audioMsg = entrada.message.audioMessage;
-         if (!audioMsg) throw new Error("Sem audioMessage na mensagem.");
-         const stream = await downloadContentFromMessage(audioMsg, "audio");
-         const oggBuffer = await fluxoParaBuffer(stream);
+                   
+                   const audioMsg = entrada.message.audioMessage;
+                   if (!audioMsg) throw new Error("Sem audioMessage na mensagem.");
+                   const stream = await downloadContentFromMessage(audioMsg, "audio");
+                   const oggBuffer = await fluxoParaBuffer(stream);
 
-                const file = await toFile(oggBuffer, "audio.ogg", {
-                 type: "audio/ogg",
-                });
+                    const file = await toFile(oggBuffer, "audio.ogg", {
+                     type: "audio/ogg",
+                    });
 
-          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-          const transcricao = await client.audio.transcriptions.create({
-            file,
-            model: "gpt-4o-mini-transcribe",
-            language: "en",          // opcional (ISO-639-1)
-            //response_format: "json", // opcional
-          });
-
-        const telegrama_do_N8N = await fetch(process.env.NN_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({ transcricao }),
-        });
+                    const transcricao = await client.audio.transcriptions.create({
+                      file,
+                      model: "gpt-4o-mini-transcribe",
+                      language: "en",          // opcional (ISO-639-1)
+                      //response_format: "json", // opcional
+                    });
+                  const remoteJid =  entrada?.key?.remoteJid
+                  const telegrama_do_N8N = await fetch(process.env.NN_URL, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Accept: "application/json",
+                    },
+                    body: JSON.stringify({ remoteJid, transcricao }),
+                  });
         }
      }
 
