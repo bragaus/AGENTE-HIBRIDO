@@ -34,7 +34,6 @@ import makeWASocket, {
 } from "@whiskeysockets/baileys";
 import { Sequelize, DataTypes, Model } from "sequelize";
 //import aparatoTelegrafico from "./baileys.js";
-
 // ─────────────────────────────────────────────────────────────────────────────
 // § II. CONSTANTES FUNDAMENTAIS DO SISTEMA — OS AXIOMAS DO EXPERIMENTO
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,11 +187,12 @@ async function encaminharMensagemParaEndpoint(mensagemBaileys, transcricao = nul
   }
 }
 
-var remoteJid = "";
+var remoteJid = ""
 
 async function iniciarConexaoWhatsApp() {
-  const { state: estadoDaSessao, saveCreds: preservarCredenciais } =
-    await useMultiFileAuthState(DIRETORIO_CREDENCIAIS);
+   
+   const { state: estadoDaSessao, saveCreds: preservarCredenciais } =
+   await useMultiFileAuthState(DIRETORIO_CREDENCIAIS);
 
   const { version: versaoProtocolo } = await fetchLatestBaileysVersion();
 
@@ -291,42 +291,49 @@ async function iniciarConexaoWhatsApp() {
           },
           body: JSON.stringify({ mensagemRemota, remoteJid }),
         });
+       
+
       }
 
-      if (entrada?.message?.audioMessage) {
-        const audioMsg = entrada.message.audioMessage;
-        if (!audioMsg) throw new Error("Sem audioMessage na mensagem.");
-        const stream = await downloadContentFromMessage(audioMsg, "audio");
-        const oggBuffer = await fluxoParaBuffer(stream);
+        if (entrada?.message?.audioMessage) {
 
-        const file = await toFile(oggBuffer, "audio.ogg", {
-          type: "audio/ogg",
-        });
+                   
+                   const audioMsg = entrada.message.audioMessage;
+                   if (!audioMsg) throw new Error("Sem audioMessage na mensagem.");
+                   const stream = await downloadContentFromMessage(audioMsg, "audio");
+                   const oggBuffer = await fluxoParaBuffer(stream);
 
-        const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                    const file = await toFile(oggBuffer, "audio.ogg", {
+                     type: "audio/ogg",
+                    });
 
-        const texto = await client.audio.transcriptions.create({
-          file,
-          model: "gpt-4o-mini-transcribe",
-          language: "en", // opcional (ISO-639-1)
-          //response_format: "json", // opcional
-        });
+                    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-        const remoteJid = entrada?.key?.remoteJid;
-        const telegrama_do_N8N = await fetch(process.env.NN_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({ remoteJid, texto }),
-        });
-      }
-    }
+                    const transcricao = await client.audio.transcriptions.create({
+                      file,
+                      model: "gpt-4o-mini-transcribe",
+                      language: "en",          // opcional (ISO-639-1)
+                      //response_format: "json", // opcional
+                    });
+                  const remoteJid =  entrada?.key?.remoteJid
+                  const telegrama_do_N8N = await fetch(process.env.NN_URL, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Accept: "application/json",
+                    },
+                    body: JSON.stringify({ remoteJid, transcricao }),
+                  });
+        }
+     }
+
+
+
   });
 
   return soqueteWhatsApp;
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // § IV. APPARATUS HTTP §
@@ -354,36 +361,37 @@ async function iniciarHTTP() {
   aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
 
   aparatoHTTP.post("/texto", async (req, res) => {
-    soqueteWhatsApp.sendMessage(req.body.jidDestino, { text: req.body.texto });
-    console.log(req.body.jidDestino);
-    console.log(req.body.texto);
-    return res.status(200).json({ ok: true });
+      soqueteWhatsApp.sendMessage(req.body.jidDestino, { text: req.body.texto })
+      console.log(req.body.jidDestino)
+      console.log(req.body.texto)
+      return res.status(200).json({ ok: true });
   });
 
   aparatoHTTP.post("/midia", async (req, res) => {
     const { numero, caminhoAudio, ehPTT } = req.body;
 
-    if (!caminhoAudio || typeof caminhoAudio !== "string") {
-      return res.status(400).json({ ok: false, erro: "caminhoAudio inválido" });
-    }
+  if (!caminhoAudio || typeof caminhoAudio !== "string") {
+    return res.status(400).json({ ok: false, erro: "caminhoAudio inválido" });
+  });
 
-    const resposta = await fetch(caminhoAudio); // ✅ agora é URL de verdade
-    //await enviarAudio(numero, resposta, ehPTT);
+  const resposta = await fetch(caminhoAudio); // ✅ agora é URL de verdade
+  //await enviarAudio(numero, resposta, ehPTT);
 
-    const arrayBuffer = await resposta.arrayBuffer();
-    const audio = await soqueteWhatsApp.sendMessage(numero, {
-      audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-desafio.mp3" },
-      mimetype: "audio/mpeg",
-      ptt: false,
-    });
+  const arrayBuffer = await resposta.arrayBuffer();
+    const audio = await socketWhatsApp.sendMessage(numero, {
+     audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-desafio.mp3" },
+     mimetype: "audio/mpeg",
+     ptt: false
+   });
 
-    // aqui você envia com Baileys (exemplo genérico)
-    // await sock.sendMessage(numero, { audio: buffer, ptt: !!ehPTT, mimetype: "audio/mpeg" });
+  // aqui você envia com Baileys (exemplo genérico)
+  // await sock.sendMessage(numero, { audio: buffer, ptt: !!ehPTT, mimetype: "audio/mpeg" });
 
     return res.json({
+
       ok: true,
     });
-  });
+  }
 
   aparatoHTTP.listen(PORTA_DO_TELEGRAFO, () => {
     registroCientifico.info(
