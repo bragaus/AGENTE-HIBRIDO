@@ -356,7 +356,9 @@ async function iniciarHTTP() {
   aparatoHTTP.options("*", cors({ origin: true, credentials: true }));
 
   aparatoHTTP.post("/texto", async (req, res) => {
-    soqueteWhatsApp.sendMessage(req.body.jidDestino, { text: req.body.texto });
+    const remoteJid = req.body.remoteJid 
+    soqueteWhatsApp.sendMessage(remoteJid, { texto: req.body.texto });
+
     console.log(req.body.jidDestino);
     console.log(req.body.texto);
     return res.status(200).json({ ok: true });
