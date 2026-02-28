@@ -362,13 +362,21 @@ async function iniciarHTTP() {
     const remoteJid = req.body.remoteJid 
     const texto = req.body.texto
     soqueteWhatsApp.sendMessage(remoteJid, { text: texto });
-
-    console.log(req.body.remoteJid);
-    console.log(req.body.texto);
     return res.status(200).json({ ok: true });
   });
 
-  aparatoHTTP.post("/midia", async (req, res) => {
+  aparatoHTTP.post("/audio", async (req, res) => {
+    const remoteJid = req.body.remoteJid 
+    const enviarAudio = await socketWhatsApp.sendMessage(remoteJid, {
+      audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-resposta.mp3"  },
+      mimetype,
+      ptt: Boolean(comoPtt)
+    });
+
+    return res.status(200).json({ ok: true });
+  });
+
+  aparatoHTTP.post("/transcricao", async (req, res) => {
     const { numero, caminhoAudio, ehPTT } = req.body;
 
     if (!caminhoAudio || typeof caminhoAudio !== "string") {
@@ -380,7 +388,7 @@ async function iniciarHTTP() {
 
     const arrayBuffer = await resposta.arrayBuffer();
     const audio = await soqueteWhatsApp.sendMessage(numero, {
-      audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-desafio.mp3" },
+      audio: { url: "" },
       mimetype: "audio/mpeg",
       ptt: false,
     });
