@@ -370,10 +370,10 @@ async function iniciarHTTP() {
     const remoteJid = req.body.remoteJid 
     const url = req.body.url
     const enPTT = req.body.ptt
-    const enviarAudio = await soqueteWhatsApp.sendMessage(remoteJid, {
-      audio: url 
+    await soqueteWhatsApp.sendMessage(remoteJid, {
+      audio: url, 
       mimetype:"audio/mpeg",
-      enPTT
+      enPTT,
     });
     return res.status(200).json({ ok: true });
   });
