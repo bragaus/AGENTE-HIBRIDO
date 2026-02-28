@@ -322,7 +322,7 @@ async function iniciarConexaoWhatsApp() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Accept: "application/json",
+            "Accept": "application/json",
           },
           body: JSON.stringify({ remoteJid, texto }),
         });
@@ -366,50 +366,15 @@ async function iniciarHTTP() {
     return res.status(200).json({ ok: true });
   });
 
-  aparatoHTTP.post("/audiodesafio", async (req, res) => {
-    const remoteJid = req.body.remoteJid 
-    const enviarAudio = await soqueteWhatsApp.sendMessage(remoteJid, {
-      audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-resposta.mp3"  },
-      mimetype: "audio/mpeg",
-      ptt: false,
-    });
-    return res.status(200).json({ ok: true });
-  });
-
   aparatoHTTP.post("/audio", async (req, res) => {
     const remoteJid = req.body.remoteJid 
+    const url = req.body.url
     const enviarAudio = await soqueteWhatsApp.sendMessage(remoteJid, {
-      audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-resposta.mp3"  },
+      audio: { url } 
       mimetype:"audio/mpeg",
       ptt: false,
     });
-
     return res.status(200).json({ ok: true });
-  });
-
-  aparatoHTTP.post("/transcricao", async (req, res) => {
-    const { numero, caminhoAudio, ehPTT } = req.body;
-
-    if (!caminhoAudio || typeof caminhoAudio !== "string") {
-      return res.status(400).json({ ok: false, erro: "caminhoAudio inválido" });
-    }
-
-    const resposta = await fetch(caminhoAudio); // ✅ agora é URL de verdade
-    //await enviarAudio(numero, resposta, ehPTT);
-
-    const arrayBuffer = await resposta.arrayBuffer();
-    const audio = await soqueteWhatsApp.sendMessage(numero, {
-      audio: { url: "" },
-      mimetype: "audio/mpeg",
-      ptt: false,
-    });
-
-    // aqui você envia com Baileys (exemplo genérico)
-    // await sock.sendMessage(numero, { audio: buffer, ptt: !!ehPTT, mimetype: "audio/mpeg" });
-
-    return res.json({
-      ok: true,
-    });
   });
 
   aparatoHTTP.listen(PORTA_DO_TELEGRAFO, () => {
