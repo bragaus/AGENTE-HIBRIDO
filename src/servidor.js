@@ -361,7 +361,7 @@ async function iniciarHTTP() {
   aparatoHTTP.post("/texto", async (req, res) => {
     const remoteJid = req.body.remoteJid 
     const texto = req.body.texto
-    await soqueteWhatsApp.sendPresenceUpdate("paused", jidDestino);
+    await soqueteWhatsApp.sendPresenceUpdate("paused", remoteJid);
     soqueteWhatsApp.sendMessage(remoteJid, { text: texto });
     return res.status(200).json({ ok: true });
   });
