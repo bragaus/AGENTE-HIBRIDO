@@ -365,12 +365,22 @@ async function iniciarHTTP() {
     return res.status(200).json({ ok: true });
   });
 
+  aparatoHTTP.post("/audiodesafio", async (req, res) => {
+    const remoteJid = req.body.remoteJid 
+    const enviarAudio = await soqueteWhatsApp.sendMessage(remoteJid, {
+      audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-resposta.mp3"  },
+      mimetype: "audio/mpeg",
+      ptt: false,
+    });
+    return res.status(200).json({ ok: true });
+  });
+
   aparatoHTTP.post("/audio", async (req, res) => {
     const remoteJid = req.body.remoteJid 
-    const enviarAudio = await socketWhatsApp.sendMessage(remoteJid, {
+    const enviarAudio = await soqueteWhatsApp.sendMessage(remoteJid, {
       audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/005-resposta.mp3"  },
-      mimetype,
-      ptt: Boolean(comoPtt)
+      mimetype:"audio/mpeg",
+      ptt: false,
     });
 
     return res.status(200).json({ ok: true });
