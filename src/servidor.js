@@ -372,7 +372,7 @@ async function iniciarHTTP() {
     await soqueteWhatsApp.sendMessage(remoteJid, {
       audio: { url }, 
       mimetype:"audio/mpeg",
-      true,
+      ptt: true
     });
     return res.status(200).json({ ok: true });
   });
