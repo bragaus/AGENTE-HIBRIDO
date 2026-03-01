@@ -371,7 +371,7 @@ async function iniciarHTTP() {
     const url = req.body.url
     const enPTT = req.body.ptt
     await soqueteWhatsApp.sendMessage(remoteJid, {
-      audio: url, 
+      audio: { url }, 
       mimetype:"audio/mpeg",
       enPTT,
     });
