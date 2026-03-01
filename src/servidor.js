@@ -370,9 +370,9 @@ async function iniciarHTTP() {
     const remoteJid = req.body.remoteJid 
     const reqUrl = req.body.url
     await soqueteWhatsApp.sendMessage(remoteJid, {
-      audio: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/001-desafio.mp3", 
-      mimetype:"audio/mpeg",
-      ptt: true
+      audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/001-desafio.mp3" }, 
+      mimetype: "audio/mpeg",
+      ptt: false
     });
     return res.status(200).json({ ok: true });
   });
