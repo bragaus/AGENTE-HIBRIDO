@@ -16,7 +16,8 @@
 //   Assim como o naturalista municia-se de lente e bisturi antes de adentrar
 //   o laboratório, importamos aqui os módulos indispensáveis à operação.
 // ─────────────────────────────────────────────────────────────────────────────
-import { desafios } from "./models/situacao_problema.js"; // ajuste o path
+import { lerArquivoLocalCautelosamente, mimetypePorExtensao } from "./util/midia.js";
+import { desafios } from "./models/situacao_problema.js";
 import multer from "multer";
 import dotenv from "dotenv";
 import express from "express";
@@ -368,7 +369,6 @@ async function iniciarHTTP() {
 
   aparatoHTTP.post("/audio", async (req, res) => {
     const remoteJid = req.body.remoteJid 
-    const reqUrl = req.body.url
     await soqueteWhatsApp.sendMessage(remoteJid, {
       audio: { url: "https://checkinnoingles.s3.us-east-1.amazonaws.com/meututor/desafios/001-desafio.mp3" }, 
       mimetype: "audio/mpeg",
