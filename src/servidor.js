@@ -369,11 +369,10 @@ async function iniciarHTTP() {
   aparatoHTTP.post("/audio", async (req, res) => {
     const remoteJid = req.body.remoteJid 
     const url = req.body.url
-    const enPTT = req.body.ptt
     await soqueteWhatsApp.sendMessage(remoteJid, {
       audio: { url }, 
       mimetype:"audio/mpeg",
-      enPTT,
+      true,
     });
     return res.status(200).json({ ok: true });
   });
