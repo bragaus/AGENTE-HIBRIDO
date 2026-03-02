@@ -277,8 +277,6 @@ async function iniciarConexaoWhatsApp() {
 
     if (especie !== "notify" && especie !== "append") return;
 
-    console.log(mensagens);
-
     for (const entrada of mensagens) {
       const texto = entrada?.message?.conversation;
       remoteJid = entrada?.key?.remoteJid;
@@ -303,6 +301,7 @@ async function iniciarConexaoWhatsApp() {
         const stream = await downloadContentFromMessage(audioMsg, "audio");
         const oggBuffer = await fluxoParaBuffer(stream);
 
+        await soqueteWhatsApp.sendPresenceUpdate("recording", remoteJid);
         const file = await toFile(oggBuffer, "audio.ogg", {
           type: "audio/ogg",
         });
@@ -374,6 +373,7 @@ async function iniciarHTTP() {
       mimetype: "audio/mpeg",
       ptt: false
     });
+    await soqueteWhatsApp.sendPresenceUpdate("paused", remoteJid);
     return res.status(200).json({ ok: true });
   });
 
